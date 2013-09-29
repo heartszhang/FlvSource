@@ -88,6 +88,22 @@ enum class aac_packet_type : int8_t {
     aac_raw = 1,
     aac_end_of_seq = 2
 };
+enum class script_data_value_type : uint8_t {
+  number = 0,
+    boolean,
+    string,
+    object,
+    movie_clip,
+    null,
+    undefined,
+    reference,
+    ecma = 8,
+    object_end_marker = 9,
+    array = 10,
+    date,
+    long_string
+};
+
 const static int flv_file_header_length        = 9;
 const static int flv_tag_header_length = 11;
 const static int flv_previous_tag_size_field_length = 4;
@@ -95,7 +111,8 @@ const static int flv_audio_header_length = 1;
 const static int flv_video_header_length = 1;
 const static int flv_aac_packet_type_length = 1;
 const static int flv_avc_packet_type_length = 4;
-
+const static uint8_t flv_file_header_audio_mask = 1 << 5;
+const static uint8_t flv_file_header_video_mask = 1 << 7;
 }
 
 struct audio_stream_header;
@@ -117,7 +134,7 @@ struct aac_profile {
     if (sample_rate = 0x0f){
       sample_rate = reader.bits(24);
     }
-    auto channels = reader.bits(4);
+    reader.bits(4);
     return 0;
   }
 };
@@ -147,21 +164,6 @@ aligned(8) class AVCDecoderConfigurationRecord {
 //avc_decoder_configuration_record
 struct avc_decoder_configuratin_record;
 
-enum class script_data_value_type : uint8_t {
-  number = 0,
-    boolean,
-    string,
-    object,
-    movie_clip,
-    null,
-    undefined,
-    reference,
-    ecma = 8,
-    object_end_marker = 9,
-    array = 10,
-    date,
-    long_string
-};
 
 /*
 Sampling rate. The following values are defined:

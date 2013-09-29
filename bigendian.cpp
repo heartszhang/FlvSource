@@ -31,7 +31,7 @@ uint8_t binary_reader::byte(){
   return v;
 }
 uint16_t binary_reader::ui16(){
-  auto v = uint16_t(data[pointer + 1]) | (uint16_t(data[pointer]) << 8);
+  uint16_t v = uint16_t(data[pointer + 1]) | (uint16_t(data[pointer]) << 8);
   pointer += sizeof(uint16_t);
   return v;
 }
