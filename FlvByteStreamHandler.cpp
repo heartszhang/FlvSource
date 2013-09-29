@@ -44,7 +44,7 @@ HRESULT FlvByteStreamHandler::CreateInstance(REFIID iid, void **ppv)
 // Constructor
 //-------------------------------------------------------------------
 
-FlvByteStreamHandler::FlvByteStreamHandler(HRESULT& hr)
+FlvByteStreamHandler::FlvByteStreamHandler(HRESULT& /*hr*/)
     : m_cRef(1), m_pSource(NULL), m_pResult(NULL)
 {
     DllAddRef();
@@ -105,9 +105,9 @@ HRESULT FlvByteStreamHandler::QueryInterface(REFIID riid, void** ppv)
 
 HRESULT FlvByteStreamHandler::BeginCreateObject(
         /* [in] */ IMFByteStream *pByteStream,
-        /* [in] */ LPCWSTR pwszURL,
+        /* [in] */ LPCWSTR /*pwszURL*/,
         /* [in] */ DWORD dwFlags,
-        /* [in] */ IPropertyStore *pProps,
+        /* [in] */ IPropertyStore * /*pProps*/,
         /* [out] */ IUnknown **ppIUnknownCancelCookie,  // Can be NULL
         /* [in] */ IMFAsyncCallback *pCallback,
         /* [in] */ IUnknown *punkState                  // Can be NULL
@@ -207,7 +207,7 @@ HRESULT FlvByteStreamHandler::EndCreateObject(
 }
 
 
-HRESULT FlvByteStreamHandler::CancelObjectCreation(IUnknown *pIUnknownCancelCookie)
+HRESULT FlvByteStreamHandler::CancelObjectCreation(IUnknown * /*pIUnknownCancelCookie*/)
 {
     return E_NOTIMPL;
 }
