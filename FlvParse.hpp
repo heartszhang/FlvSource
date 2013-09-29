@@ -50,7 +50,7 @@ struct avc_header{
   uint32_t composite_time;
 };
 // be filled after parse audio-tag header
-struct audio_stream_header : public tag_header{
+struct audio_stream_header : public tag_header, public audio_header{
   int32_t                       stream_id;  // Raw stream_id field.  // must be 0
   flv::audio_codec              codec_id;   // 10 = AAC
   flv::sound_rate               sound_rate; // 0: 5.5k, 1: 11k, 2: 22k, 3:44k
@@ -62,7 +62,8 @@ struct audio_stream_header : public tag_header{
   uint64_t                      payload_offset;// file position absolute
   audio_stream_header() = default;
   explicit audio_stream_header(tag_header const&t) : tag_header(t){};
-  explicit audio_stream_header(tag_header const&t, audio_header const&ah) : tag_header(t){}
+  explicit audio_stream_header(tag_header const&t, audio_header const&ah) : tag_header(t), stream_id(0), audio_header(ah){
+  }
 
   //载荷数据长度，不包含tag_header, audio_header, aac_packet_type
   uint32_t payload_length()const {
@@ -86,11 +87,8 @@ struct audio_stream_header : public tag_header{
 struct avc_decoder_configuration_record;
 struct avc_nalus;
 
-struct video_stream_header : public tag_header{
+struct video_stream_header : public tag_header, public video_header{
   int32_t                          stream_id;  // Raw stream_id field. must be 0
-  flv::frame_type                  frame_type;
-  flv::video_codec                 codec_id;  // 7 = avc
- 
   flv::avc_packet_type             avc_packet_type;// if codec = 7
   uint32_t                         composition_time;// if codec = 7
 
@@ -104,7 +102,7 @@ struct video_stream_header : public tag_header{
   }
   video_stream_header() = default;
   explicit video_stream_header(tag_header const&t) : tag_header(t){};
-  video_stream_header(tag_header const&t, video_header const&v):tag_header(t){}
+  video_stream_header(tag_header const&t, video_header const&v):tag_header(t), video_header(v){  }
 };
 
 struct packet{
