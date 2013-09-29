@@ -20,7 +20,7 @@ public:
     STDMETHODIMP_(ULONG) Release();
 
     // IMFAsyncCallback
-    STDMETHODIMP GetParameters(DWORD* pdwFlags, DWORD* pdwQueue)
+    STDMETHODIMP GetParameters(DWORD* /*pdwFlags*/, DWORD* /*pdwQueue*/)
     {
         // Implementation of this method is optional.
         return E_NOTIMPL;
