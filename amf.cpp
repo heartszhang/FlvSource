@@ -3,42 +3,42 @@
 int32_t amf_reader::skip_script_data_value(){
   auto t = byte();
   int32_t hr = 0;
-  switch (script_data_value_type(t)){
-  case script_data_value_type::number:
+  switch (flv::script_data_value_type(t)){
+  case flv::script_data_value_type::number:
   skip(sizeof(double));
   break;
-  case script_data_value_type::boolean:
+  case flv::script_data_value_type::boolean:
   skip(sizeof(uint8_t));
   break;
-  case script_data_value_type::string:
+  case flv::script_data_value_type::string:
   hr = skip_script_data_string();
   break;
-  case script_data_value_type::object:
+  case flv::script_data_value_type::object:
   hr = skip_script_data_object();
   break;
-  case script_data_value_type::movie_clip:
+  case flv::script_data_value_type::movie_clip:
   hr = skip_script_data_string();
   break;
-  case script_data_value_type::null:
+  case flv::script_data_value_type::null:
   break;
-  case script_data_value_type::undefined:
+  case flv::script_data_value_type::undefined:
   break;
-  case script_data_value_type::reference:
+  case flv::script_data_value_type::reference:
   skip(sizeof(uint16_t));
   break;
-  case script_data_value_type::ecma:
+  case flv::script_data_value_type::ecma:
   hr = skip_script_data_ecma_array();
   break;
-  case script_data_value_type::object_end_marker:
+  case flv::script_data_value_type::object_end_marker:
   break;
-  case script_data_value_type::array:
+  case flv::script_data_value_type::array:
   hr = skip_script_data_strict_array();
   break;
-  case script_data_value_type::date:
+  case flv::script_data_value_type::date:
   skip(sizeof(double));
   skip(sizeof(uint16_t));
   break;
-  case script_data_value_type::long_string:
+  case flv::script_data_value_type::long_string:
   hr = skip_script_data_string();
   break;
   default:
@@ -51,7 +51,7 @@ keyframes amf_reader::decode_keyframes(int32_t*ret){
   *ret = 0;
   // ecma-array
   auto t = byte();
-  if (t != (uint8_t)script_data_value_type::object)
+  if (t != (uint8_t)flv::script_data_value_type::object)
   {
     *ret = -1;
     return std::move(va);
@@ -90,10 +90,9 @@ int32_t amf_reader::skip_script_data_object(){
 }
 int32_t amf_reader::skip_script_data_object_property(bool*notend){
   auto v = script_data_string();
-  int32_t hr = 0;
   if (v.empty()){
     auto x = byte();
-    if (x == 0x9){
+    if (x == (uint8_t)flv::script_data_value_type::object_end_marker){
       notend = false;
       return 0;
     }
@@ -104,7 +103,7 @@ int32_t amf_reader::skip_script_data_object_property(bool*notend){
 }
 
 int32_t amf_reader::skip_script_data_ecma_array(){
-  auto l = ui32();
+  ui32();
   int32_t hr = 0;
   for (bool notend = true; notend && hr == 0;){
     hr = skip_script_data_object_property(&notend);
@@ -127,7 +126,7 @@ int32_t amf_reader::skip_script_data_string(){
 int32_t amf_reader::skip_script_data_object_end(bool*notend){
   auto v = byte();
   *notend = false;
-  return  (v == (uint8_t)script_data_value_type::object_end_marker) ? 0 : -1;
+  return  (v == (uint8_t)flv::script_data_value_type::object_end_marker) ? 0 : -1;
 }
 int32_t amf_reader::skip_script_data_value_end(bool *notend){
   return skip_script_data_object_end(notend);
