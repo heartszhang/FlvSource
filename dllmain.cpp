@@ -19,14 +19,13 @@
 //
 //////////////////////////////////////////////////////////////////////////
 
-#include "MPEG1Source.h"
-#include "MPEG1ByteStreamHandler.h"
+#include "FlvSource.h"
+#include "FlvByteStreamHandler.h"
 
 #include <assert.h>
 #include <strsafe.h>
 
 #include <initguid.h>
-
 const DWORD CHARS_IN_GUID = 39;
 
 
@@ -39,10 +38,8 @@ HRESULT RegisterObject(
 
 HRESULT UnregisterObject(const GUID& guid);
 
-
-
 // {EFE6208A-0A2C-49fa-8A01-3768B559B6DA}
-DEFINE_GUID(CLSID_MFSampleMPEG1ByteStreamHandler,
+DEFINE_GUID(CLSID_MFFlvByteStreamHandler,
 0xefe6208a, 0xa2c, 0x49fa, 0x8a, 0x1, 0x37, 0x68, 0xb5, 0x59, 0xb6, 0xda);
 
 // Module Ref count
@@ -66,7 +63,7 @@ void DllRelease()
 // Text strings
 
 // Description string for the bytestream handler.
-const TCHAR* sByteStreamHandlerDescription = TEXT("MPEG1 Source ByteStreamHandler");
+const TCHAR* sByteStreamHandlerDescription = TEXT("Flv Source ByteStreamHandler");
 
 // File extension for WAVE files.
 const TCHAR* sFileExtension = TEXT(".flv");
@@ -99,7 +96,7 @@ struct CLASS_OBJECT_INIT
 // Classes supported by this module:
 const CLASS_OBJECT_INIT c_rgClassObjectInit[] =
 {
-    { &CLSID_MFSampleMPEG1ByteStreamHandler, MPEG1ByteStreamHandler_CreateInstance },
+  { &CLSID_MFFlvByteStreamHandler, FlvByteStreamHandler_CreateInstance },
 };
 
 class CClassFactory : public IClassFactory
@@ -233,7 +230,7 @@ STDAPI DllRegisterServer()
     // Register the bytestream handler's CLSID as a COM object.
     hr = RegisterObject(
             g_hModule,                              // Module handle
-            CLSID_MFSampleMPEG1ByteStreamHandler,   // CLSID
+            CLSID_MFFlvByteStreamHandler,   // CLSID
             sByteStreamHandlerDescription,          // Description
             TEXT("Both")                            // Threading model
             );
@@ -242,7 +239,7 @@ STDAPI DllRegisterServer()
     if (SUCCEEDED(hr))
     {
         hr = RegisterByteStreamHandler(
-            CLSID_MFSampleMPEG1ByteStreamHandler,       // CLSID
+          CLSID_MFFlvByteStreamHandler,       // CLSID
             sFileExtension,                             // Supported file extension
             sByteStreamHandlerDescription               // Description
             );
@@ -254,10 +251,10 @@ STDAPI DllRegisterServer()
 STDAPI DllUnregisterServer()
 {
     // Unregister the CLSIDs
-    UnregisterObject(CLSID_MFSampleMPEG1ByteStreamHandler);
+  UnregisterObject(CLSID_MFFlvByteStreamHandler);
 
     // Unregister the bytestream handler for the file extension.
-    UnregisterByteStreamHandler(CLSID_MFSampleMPEG1ByteStreamHandler, sFileExtension);
+  UnregisterByteStreamHandler(CLSID_MFFlvByteStreamHandler, sFileExtension);
 
     return S_OK;
 }
@@ -299,7 +296,7 @@ HRESULT CreateRegistryKey(HKEY hKey, LPCTSTR subkey, HKEY *phKey)
 // sDescription:    Description.
 //
 // Note: sFileExtension can also be a MIME type although that is not
-//       illustrated in this sample.
+//       illustrated in this project.
 ///////////////////////////////////////////////////////////////////////
 
 HRESULT RegisterByteStreamHandler(const GUID& guid, const TCHAR *sFileExtension, const TCHAR *sDescription)

@@ -1,5 +1,6 @@
 #include "FlvSource.h"
-#include "asynccb.h"
+#include "AsyncCallback.hpp"
+#include "MFState.hpp"
 #pragma warning( push )
 #pragma warning( disable : 4355 )  // 'this' used in base member initializer list
 
@@ -9,8 +10,6 @@ HRESULT CreateAudioMediaType(const flv_file_header& , IMFMediaType **ppType);
 HRESULT GetStreamMajorType(IMFStreamDescriptor *pSD, GUID *pguidMajorType);
 BOOL    SampleRequestMatch(SourceOp *pOp1, SourceOp *pOp2);
 
-
-/* Public class methods */
 
 //-------------------------------------------------------------------
 // Name: CreateInstance
@@ -527,14 +526,13 @@ HRESULT FlvSource::BeginOpen(IMFByteStream *pStream, IMFAsyncCallback *pCB, IUnk
     return hr;
 }
 HRESULT FlvSource::ReadFlvHeader() {
-  //  auto hr = parser.begin_check_flv_header(new MFAsyncCallback([]()->HRESULT{}), nullptr);
-  auto hr = parser.begin_check_flv_header(byte_stream, &on_flv_header, nullptr);
+  auto hr = parser.begin_flv_header(byte_stream, &on_flv_header, nullptr);
   return hr;
 }
 HRESULT FlvSource::OnFlvHeader(IMFAsyncResult *result){
-  int32_t hr1 = 0;
-  auto hr = parser.end_check_flv_header(result, &hr1);
-  if (FAILED(hr) || hr1 != 0) {
+  flv_header v;
+  auto hr = parser.end_flv_header(result, &v);
+  if (FAILED(hr)) {
     Shutdown();
     return S_OK;
   }
@@ -595,7 +593,7 @@ HRESULT FlvSource::ReadMetaData(uint32_t meta_size) {
 }
 
 HRESULT FlvSource::OnMetaData(IMFAsyncResult *result){
-  auto hr = parser.end_on_meta_data(result, &header.meta);
+  auto hr = parser.end_on_meta_data(result, &header);
   if (FAILED(hr) || FAILED(result->GetStatus())){
     Shutdown();
     return S_OK;
@@ -722,8 +720,15 @@ FlvSource::FlvSource(HRESULT& hr) :
     m_cRestartCounter(0),
     on_flv_header(this, &FlvSource::OnFlvHeader),
     on_tag_header(this, &FlvSource::OnFlvTagHeader),
-    on_seek_to_next_tag(this, &FlvSource::OnSeekToNextTag),
-    on_meta_data(this, &FlvSource::OnMetaData)
+//    on_seek_to_next_tag(this, &FlvSource::OnSeekToNextTag),
+    on_meta_data(this, &FlvSource::OnMetaData),
+    on_demux_sample_header(this, &FlvSource::OnSampleHeader),
+    on_audio_header(this, &FlvSource::OnAudioHeader),
+    on_aac_packet_type(this, &FlvSource::OnAacPacketType),
+    on_audio_data(this, &FlvSource::OnAudioData),
+    on_avc_packet_type(this, &FlvSource::OnAacPacketType),
+    on_video_data(this, &FlvSource::OnVideoData),
+    on_video_header(this, &FlvSource::OnVideoHeader)
 {
     DllAddRef();
 
@@ -1162,7 +1167,7 @@ HRESULT     FlvSource::SelectStreams(IMFPresentationDescriptor *pPD, const PROPV
     fWasSelected = flv_stream->IsActive();
 
     // Activate or deactivate the stream.
-    hr = flv_stream->Activate(fSelected);
+    hr = flv_stream->Activate(!!fSelected);
     if (FAILED(hr))
     {
       goto done;
@@ -1335,10 +1340,11 @@ HRESULT FlvSource::ReadVideoHeader(tag_header const&h){
     Shutdown();
   return hr;
 }
+
 HRESULT FlvSource::OnVideoHeader(IMFAsyncResult*result){
   video_header vh;
   auto hr = parser.end_video_header(result, &vh);
-  video_stream_header vsh(FromAsyncResult<tag_header>(result), vh);
+  video_stream_header vsh(FromAsyncResultState<tag_header>(result), vh);
   if (ok(hr)){
     if (vsh.codec_id == flv::video_codec::avc) {
       ReadAvcPacketType(vsh);
@@ -1351,6 +1357,7 @@ HRESULT FlvSource::OnVideoHeader(IMFAsyncResult*result){
     Shutdown();
   return hr;
 }
+
 HRESULT FlvSource::ReadAudioHeader(tag_header const&h){
   auto hr = parser.begin_audio_header(&on_audio_header, NewMFState(h));
   if (fail(hr))
@@ -1360,7 +1367,7 @@ HRESULT FlvSource::ReadAudioHeader(tag_header const&h){
 HRESULT FlvSource::OnAudioHeader(IMFAsyncResult* result){
   audio_header ah;
   auto hr = parser.end_audio_header(result, &ah);
-  tag_header const&th = FromAsyncResult<tag_header>(result);
+  tag_header const&th = FromAsyncResultState<tag_header>(result);
   audio_stream_header ash(th, ah);
   if (ok(hr)){
     if (ah.codec_id == flv::audio_codec::aac)
@@ -1373,21 +1380,6 @@ HRESULT FlvSource::OnAudioHeader(IMFAsyncResult* result){
   return hr;
 }
 
-HRESULT FlvSource::OnVideoHeader(IMFAsyncResult* result){
-  video_header vh;
-  auto hr = parser.end_video_header(result, &vh);
-  FromAsyncResult<tag_header>(result);
-  video_stream_header vsh(FromAsyncResult<tag_header>(result), vh);
-  if (ok(hr)){
-    if(vh.codec_id == flv::video_codec::avc)
-      ReadAvcPacketType(vsh); // ignore return value
-    else ReadVideoData(vsh);
-  }
-  if (fail(hr)){
-    Shutdown();
-  }
-  return hr;
-}
 HRESULT FlvSource::ReadAacPacketType(audio_stream_header const&ash){
   auto hr = parser.begin_aac_packet_type(&on_aac_packet_type, NewMFState(ash));
   if (fail(hr))
@@ -1395,7 +1387,7 @@ HRESULT FlvSource::ReadAacPacketType(audio_stream_header const&ash){
   return hr;
 }
 HRESULT FlvSource::OnAacPacketType(IMFAsyncResult*result){
-  auto &ash = FromAsyncResult<audio_stream_header>(result);
+  auto &ash = FromAsyncResultState<audio_stream_header>(result);
   auto hr = parser.end_aac_packet_type(result, &ash.aac_packet_type);
   if (ok(hr)) 
     hr = byte_stream->GetCurrentPosition(&ash.data_offset);
@@ -1406,14 +1398,17 @@ HRESULT FlvSource::OnAacPacketType(IMFAsyncResult*result){
   return hr;
 }
 HRESULT FlvSource::ReadAvcPacketType(video_stream_header const&vsh){
-  auto hr = parser.begin_avc_packet_type(&on_avc_packet_type, NewMFState(vsh));
+  auto hr = parser.begin_avc_header(&on_avc_packet_type, NewMFState(vsh));
   if (fail(hr))
     Shutdown();
   return hr;
 }
 HRESULT FlvSource::OnAvcPacketType(IMFAsyncResult*result){
-  auto &vsh = FromAsyncResult<video_stream_header>(result);
-  auto hr = parser.end_avc_packet_type(result, &vsh.avc_packet_type, &vsh.composition_time);
+  avc_header v;
+  auto hr = parser.end_avc_header(result, &v);
+  auto &vsh = FromAsyncResultState<video_stream_header>(result);
+  vsh.avc_packet_type = v.avc_packet_type;
+  vsh.composition_time = v.composite_time;
   if (ok(hr))
     ReadVideoData(vsh);
   if (fail(hr))
@@ -1427,21 +1422,22 @@ HRESULT FlvSource::ReadAudioData(audio_stream_header const& ash){
   return hr;
 }
 HRESULT FlvSource::OnAudioData(IMFAsyncResult *result){
-  auto &ash = FromAsyncResult<audio_stream_header>(result);
+  auto &ash = FromAsyncResultState<audio_stream_header>(result);
+  packet pack;
+  auto  hr = parser.end_audio_data(result, &pack);
   IMFMediaBufferPtr mbuf;
-  BYTE* pb = nullptr;
-  uint32_t cb = 0;
-  auto hr = MFCreateMemoryBuffer(ash.payload_length(), &mbuf);
+  hr = MFCreateMemoryBuffer(pack.length, &mbuf);
+
+  BYTE*pb = nullptr;
   mbuf->Lock(&pb, nullptr, nullptr);
-  if(ok(hr))
-    hr = parser.end_audio_data(result, pb, ash.payload_length(), &cb);
-  mbuf->SetCurrentLength(cb);
+  memcpy(pb, pack._, pack.length);
+  mbuf->SetCurrentLength(pack.length);
   mbuf->Unlock();
   IMFSamplePtr sample;
   if (ok(hr))
     hr = MFCreateSample(&sample);
   sample->AddBuffer(mbuf);
-  sample->SetSampleTime(ash.tag.nano_time());
+  sample->SetSampleTime(ash.nano_time());
   if (ok(hr)){
     auto astream = static_cast<FlvStream*>(audio_stream.GetInterfacePtr());
     hr = astream->DeliverPayload(sample);
@@ -1459,21 +1455,25 @@ HRESULT FlvSource::ReadVideoData(video_stream_header const& vsh){
   return hr;
 }
 HRESULT FlvSource::OnVideoData(IMFAsyncResult *result){
-  auto &ash = FromAsyncResult<audio_stream_header>(result);
+  auto &ash = FromAsyncResultState<video_stream_header>(result);
+  packet pack;
+  auto  hr = parser.end_video_data(result, &pack);
+
   IMFMediaBufferPtr mbuf;
+  hr = MFCreateMemoryBuffer(pack.length, &mbuf);
   BYTE* pb = nullptr;
-  uint32_t cb = 0;
-  auto hr = MFCreateMemoryBuffer(ash.payload_length(), &mbuf);
   mbuf->Lock(&pb, nullptr, nullptr);
-  if (ok(hr))
-    hr = parser.end_video_data(result, pb, ash.payload_length(), &cb);
-  mbuf->SetCurrentLength(cb);
+  memcpy(pb, pack._, pack.length);
+  mbuf->SetCurrentLength(pack.length);
   mbuf->Unlock();
   IMFSamplePtr sample;
   if (ok(hr))
     hr = MFCreateSample(&sample);
   sample->AddBuffer(mbuf);
-  sample->SetSampleTime(ash.tag.nano_time());
+  sample->SetSampleTime(ash.nano_time());
+  sample->SetUINT32(MFSampleExtension_CleanPoint, ash.frame_type == flv::frame_type::key_frame ? 1 : 0);
+  // should set sample duration
+
   if (ok(hr)){
     auto astream = static_cast<FlvStream*>(video_stream.GetInterfacePtr());
     hr = astream->DeliverPayload(sample);
@@ -1485,12 +1485,6 @@ HRESULT FlvSource::OnVideoData(IMFAsyncResult *result){
   return hr;
 }
 
-HRESULT FlvSource::ReadVideoHeader(tag_header const&h){
-  auto hr = parser.begin_video_header(&on_video_header, NewMFState(h));
-  if (fail(hr))
-    Shutdown();
-  return hr;
-}
 HRESULT FlvSource::EndOfFile(){
   auto vstream = static_cast<FlvStream*>(video_stream.GetInterfacePtr());
   auto astream = static_cast<FlvStream*>(audio_stream.GetInterfacePtr());
@@ -1828,8 +1822,8 @@ HRESULT CreateVideoMediaType(const flv_file_header& header, IMFMediaType **ppTyp
         hr = MFSetAttributeSize(
             pType,
             MF_MT_FRAME_SIZE,
-            header.meta.width,
-            header.meta.height
+            header.width,
+            header.height
             );
     }
     if (SUCCEEDED(hr))
@@ -1839,7 +1833,7 @@ HRESULT CreateVideoMediaType(const flv_file_header& header, IMFMediaType **ppTyp
         hr = MFSetAttributeRatio(
             pType,
             MF_MT_FRAME_RATE, 
-            (uint32_t)header.meta.framerate ,
+            (uint32_t)header.framerate ,
             1
             );
     }
@@ -1848,7 +1842,7 @@ HRESULT CreateVideoMediaType(const flv_file_header& header, IMFMediaType **ppTyp
     {
         // Average bit rate
 
-        hr = pType->SetUINT32(MF_MT_AVG_BITRATE, header.meta.videodatarate);
+        hr = pType->SetUINT32(MF_MT_AVG_BITRATE, header.videodatarate);
     }
     if (SUCCEEDED(hr))
     {
@@ -1876,10 +1870,10 @@ HRESULT CreateAudioMediaType(const flv_file_header& header, IMFMediaType **ppTyp
     ZeroMemory(&format, sizeof(format));
 
     format.wFormatTag = WAVE_FORMAT_RAW_AAC1;  // raw aac1
-    format.nChannels = header.meta.stereo ? 2 : 1;
-    format.nSamplesPerSec = header.meta.audiosamplerate;
-    format.wBitsPerSample = header.meta.audiosamplesize;
-    format.nAvgBytesPerSec = header.meta.audiodatarate / 8;
+    format.nChannels = header.stereo + 1;
+    format.nSamplesPerSec = header.audiosamplerate;
+    format.wBitsPerSample = header.audiosamplesize;
+    format.nAvgBytesPerSec = header.audiodatarate / 8;
     format.nBlockAlign = 8; // why 8
     format.cbSize = 0;
 

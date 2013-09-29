@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 // Buffer class:
 // Resizable buffer used to hold the FLV data.
 struct buffer
@@ -8,38 +9,36 @@ struct buffer
     {
         delete [] m_pArray;
     }
-    HRESULT Initalize(DWORD cbSize);
-
-    BYTE*   DataPtr();
-    DWORD   DataSize() const;
+    uint8_t*   DataPtr();
+    uint32_t   DataSize() const;
 
     // Reserve: Reserves cb bytes of free data in the buffer.
     // The reserved bytes start at DataPtr() + DataSize().
-    HRESULT Reserve(DWORD cb);
+    HRESULT Reserve(uint32_t cb);
 
     // MoveStart: Moves the front of the buffer.
     // Call this method after consuming data from the buffer.
-    HRESULT MoveStart(DWORD cb);
+    HRESULT MoveStart(uint32_t cb);
 
     // MoveEnd: Moves the end of the buffer.
     // Call this method after reading data into the buffer.
-    HRESULT MoveEnd(DWORD cb);
+    HRESULT MoveEnd(uint32_t cb);
 
-    HRESULT Reset(DWORD cb);  // reset buffer and reserve
+    void Reset(uint32_t cb);  // reset buffer and reserve
 private:
-    BYTE* Ptr() { return m_pArray; }
+  uint8_t* Ptr() { return m_pArray; }
 
-    HRESULT SetSize(DWORD count);
-    HRESULT Allocate(DWORD alloc);
+    HRESULT SetSize(uint32_t count);
+    HRESULT Allocate(uint32_t alloc);
 
-    DWORD   CurrentFreeSize() const;
+    uint32_t   CurrentFreeSize() const;
 
 private:
 
-    BYTE       *m_pArray;
-    DWORD   m_count;        // Nominal count.
-    DWORD   m_allocated;    // Actual allocation size.
+  uint8_t       *m_pArray;
+  uint32_t   m_count;        // Nominal count.
+    uint32_t   m_allocated;    // Actual allocation size.
 
-    DWORD   m_begin;
-    DWORD   m_end;  // 1 past the last element
+    uint32_t   m_begin;
+    uint32_t   m_end;  // 1 past the last element
 };

@@ -90,13 +90,78 @@ enum class aac_packet_type : int8_t {
 };
 const static int flv_file_header_length        = 9;
 const static int flv_tag_header_length = 11;
-const static int flv::previous_tag_size_field_size = 4;
+const static int flv_previous_tag_size_field_length = 4;
+const static int flv_audio_header_length = 1;
+const static int flv_video_header_length = 1;
+const static int flv_aac_packet_type_length = 1;
+const static int flv_avc_packet_type_length = 4;
+
 }
 
 struct audio_stream_header;
 struct video_stream_header;
 
+struct bit_reader{
+  explicit bit_reader(const uint8_t*data, uint32_t length);
+  uint32_t bits(uint8_t);
+};
 
+//AvcSpecificConfig
+struct aac_profile {
+  uint8_t const*data;
+  uint32_t config_bytes;
+  int32_t parse(){
+    bit_reader reader(data, config_bytes);
+    reader.bits(5);  // audioObjectType
+    auto sample_rate = reader.bits(4);
+    if (sample_rate = 0x0f){
+      sample_rate = reader.bits(24);
+    }
+    auto channels = reader.bits(4);
+    return 0;
+  }
+};
+
+
+/*
+aligned(8) class AVCDecoderConfigurationRecord {
+ unsigned int(8) configurationVersion = 1;
+ unsigned int(8) AVCProfileIndication;
+ unsigned int(8) profile_compatibility;
+ unsigned int(8) AVCLevelIndication;
+ bit(6) reserved = '111111'b;
+ unsigned int(2) lengthSizeMinusOne;
+ bit(3) reserved = '111'b;
+ unsigned int(5) numOfSequenceParameterSets;
+ for (i=0; i< numOfSequenceParameterSets; i++) {
+ unsigned int(16) sequenceParameterSetLength ;
+ bit(8*sequenceParameterSetLength) sequenceParameterSetNALUnit;
+ }
+ unsigned int(8) numOfPictureParameterSets;
+ for (i=0; i< numOfPictureParameterSets; i++) {
+ unsigned int(16) pictureParameterSetLength;
+ bit(8*pictureParameterSetLength) pictureParameterSetNALUnit;
+ }
+}
+*/
+//avc_decoder_configuration_record
+struct avc_decoder_configuratin_record;
+
+enum class script_data_value_type : uint8_t {
+  number = 0,
+    boolean,
+    string,
+    object,
+    movie_clip,
+    null,
+    undefined,
+    reference,
+    ecma = 8,
+    object_end_marker = 9,
+    array = 10,
+    date,
+    long_string
+};
 
 /*
 Sampling rate. The following values are defined:
@@ -121,9 +186,9 @@ Mono or stereo sound
 struct raw_flv_header {
   uint8_t signature[3];
   uint8_t version;
-uint8_t:5;
+  uint8_t:5;
   uint8_t has_audio : 1;
-uint8_t:1;
+  uint8_t:1;
   uint8_t has_video : 1;
   uint32_t data_offset_be;
 };
@@ -153,4 +218,5 @@ struct raw_avc_packet_type {
   uint8_t avc_packet_type;
   uint8_t composition_time[3];
 };
+
 #pragma pack(pop)

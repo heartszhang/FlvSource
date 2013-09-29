@@ -34,13 +34,13 @@ public:
     HRESULT     EndOfStream();
     HRESULT     Shutdown();
 
-    BOOL        IsActive() const { return activated; }
-    BOOL        NeedsData();
+    bool        IsActive() const { return activated; }
+    bool        NeedsData();
 
     HRESULT     DeliverPayload(IMFSample* pSample);
 
     // Callbacks
-    HRESULT     OnDispatchSamples(IMFAsyncResult *pResult);
+ //   HRESULT     OnDispatchSamples(IMFAsyncResult *pResult);
 
 private:
 

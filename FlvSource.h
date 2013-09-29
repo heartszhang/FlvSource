@@ -26,7 +26,7 @@
 // Common sample files.
 #include "linklist.h"
 
-#include "asynccb.h"
+#include "asynccallback.hpp"
 #include "OpQueue.h"
 
 
@@ -61,7 +61,7 @@ enum SourceState
     STATE_SHUTDOWN
 };
 
-#include "Parse.h"          // Flv parser
+#include "FlvParse.hpp"          // Flv parser
 #include "FlvStream.h"    // Flv stream
 
 
@@ -157,7 +157,7 @@ public:
     void    Unlock() { LeaveCriticalSection(&m_critSec); }
 
     // Callbacks
-    HRESULT OnByteStreamRead(IMFAsyncResult *pResult);  // Async callback for RequestData
+//    HRESULT OnByteStreamRead(IMFAsyncResult *pResult);  // Async callback for RequestData
 
 private:
 
@@ -176,8 +176,8 @@ private:
     /*
     BOOL        IsStreamTypeSupported(StreamType type) const;
     BOOL        IsStreamActive(const FlvPacketHeader& packetHdr);
-    */
     BOOL        StreamsNeedData() const;
+    */
     HRESULT     DoStart(StartOp *pOp);
     HRESULT     DoStop(SourceOp *pOp);
     HRESULT     DoPause(SourceOp *pOp);
@@ -188,17 +188,13 @@ private:
     HRESULT     InitPresentationDescriptor();
     HRESULT     SelectStreams(IMFPresentationDescriptor *pPD, const PROPVARIANT varStart);
 
-//    HRESULT     RequestData(DWORD cbRequest);
-//    HRESULT     ParseData();
-    HRESULT     ReadPayload(DWORD *pcbAte, DWORD *pcbNextRequest);
-    HRESULT     dumex_samples();
     HRESULT     EndOfMPEGStream();
 
 //    HRESULT     CreateStream(const FlvPacketHeader& packetHdr);
     HRESULT   CreateAudioStream();
     HRESULT   CreateVideoStream();
-    HRESULT CreateStream(DWORD index, IMFMediaType*media_type, IMFMediaStream**v);
-    HRESULT     ValidatePresentationDescriptor(IMFPresentationDescriptor *pPD);
+    HRESULT   CreateStream(DWORD index, IMFMediaType*media_type, IMFMediaStream**v);
+    HRESULT   ValidatePresentationDescriptor(IMFPresentationDescriptor *pPD);
 
     // Handler for async errors.
     void        StreamingError(HRESULT hr);
@@ -213,31 +209,32 @@ private:
 
     CRITICAL_SECTION            m_critSec;                  // critical section for thread safety
     SourceState                 m_state;                    // Current state (running, stopped, paused)
+    struct {
+      uint32_t pending_request : 1;
+    }status;
 
     flv_parser                      parser;
 
-    IMFMediaEventQueuePtr          m_pEventQueue;             // Event generator helper
-    IMFPresentationDescriptorPtr   presentation_descriptor; // Presentation descriptor.
-    IMFAsyncResult              *m_pBeginOpenResult;        // Result object for async BeginOpen operation.
-    IMFByteStreamPtr               byte_stream;
-    flv_file_header     header;
-    IMFMediaStreamPtr  video_stream;
-    IMFMediaStreamPtr  audio_stream;
+    IMFMediaEventQueuePtr           m_pEventQueue;             // Event generator helper
+    IMFPresentationDescriptorPtr    presentation_descriptor; // Presentation descriptor.
+    IMFAsyncResult                  *m_pBeginOpenResult;        // Result object for async BeginOpen operation.
+    IMFByteStreamPtr                byte_stream;
+    flv_file_header                 header;
+    IMFMediaStreamPtr               video_stream;
+    IMFMediaStreamPtr               audio_stream;
 
     DWORD                       m_cPendingEOS;              // Pending EOS notifications.
     ULONG                       m_cRestartCounter;          // Counter for sample requests.
 
     SourceOp                    *m_pCurrentOp;
-//    SourceOp                    *m_pSampleRequest;
 
     // Async callback helper.
-//    AsyncCallback<FlvSource>  m_OnByteStreamRead;
     AsyncCallback<FlvSource> on_flv_header;
     AsyncCallback<FlvSource> on_tag_header;
-    AsyncCallback<FlvSource> on_seek_to_next_tag;
+//    AsyncCallback<FlvSource> on_seek_to_next_tag;
     AsyncCallback<FlvSource> on_meta_data;
     AsyncCallback<FlvSource> on_demux_sample_header;
-    AsyncCallback<FlvSource> on_demux_sample_body;
+//    AsyncCallback<FlvSource> on_demux_sample_body;
     AsyncCallback<FlvSource> on_audio_header;
     AsyncCallback<FlvSource> on_aac_packet_type;
     AsyncCallback<FlvSource> on_audio_data;
@@ -272,7 +269,4 @@ private:
 
     void DemuxSample();
     bool NeedDemux();
-    struct {
-      uint32_t pending_request : 1;
-    }status;
 };

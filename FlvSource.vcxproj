@@ -95,7 +95,7 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PrecompiledHeader />
       <WarningLevel>Level3</WarningLevel>
-      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
       <RegisterOutput>false</RegisterOutput>
@@ -175,17 +175,22 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="amf.cpp" />
+    <ClCompile Include="bigendian.cpp" />
+    <ClCompile Include="buffer.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="FlvByteStreamHandler.cpp" />
     <ClCompile Include="FlvSource.cpp" />
     <ClCompile Include="FlvStream.cpp" />
-    <ClCompile Include="Parse.cpp" />
+    <ClCompile Include="FlvParse.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="FlvSource.def" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="asynccb.h" />
+    <ClInclude Include="amf.hpp" />
+    <ClInclude Include="AsyncCallback.hpp" />
+    <ClInclude Include="bigendian.hpp" />
     <ClInclude Include="buffer.hpp" />
     <ClInclude Include="flv.hpp" />
     <ClInclude Include="flv_meta.hpp" />
@@ -194,8 +199,10 @@
     <ClInclude Include="FlvByteStreamHandler.h" />
     <ClInclude Include="FlvSource.h" />
     <ClInclude Include="FlvStream.h" />
+    <ClInclude Include="MFState.hpp" />
     <ClInclude Include="OpQueue.h" />
-    <ClInclude Include="Parse.h" />
+    <ClInclude Include="FlvParse.hpp" />
+    <ClInclude Include="tag_header.hpp" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />

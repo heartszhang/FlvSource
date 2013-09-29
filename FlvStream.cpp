@@ -292,7 +292,7 @@ const DWORD SAMPLE_QUEUE = 2;               // How many samples does each stream
 // Returns TRUE if the stream needs more data.
 //-------------------------------------------------------------------
 
-BOOL FlvStream::NeedsData()
+bool FlvStream::NeedsData()
 {
     SourceLock lock(m_pSource);
 
