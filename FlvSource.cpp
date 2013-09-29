@@ -284,8 +284,6 @@ HRESULT FlvSource::Shutdown()
 
     HRESULT hr = S_OK;
 
-    FlvStream *pStream = NULL;
-
     hr = CheckShutdown();
 
     if (SUCCEEDED(hr))
@@ -584,7 +582,7 @@ HRESULT FlvSource::OnFlvTagHeader(IMFAsyncResult *result){
 }
 HRESULT FlvSource::SeekToNextTag(tag_header const&tagh) {
   //return // parser.begin_seek(tagh.data_size, 1, &on_seek_to_tag_begin, nullptr);
-  QWORD pos = -1;
+  QWORD pos = 0;
   return byte_stream->Seek(MFBYTESTREAM_SEEK_ORIGIN::msoCurrent, tagh.data_size, MFBYTESTREAM_SEEK_FLAG_CANCEL_PENDING_IO, &pos);
 }
 
@@ -1035,6 +1033,7 @@ HRESULT FlvSource::DispatchOperation(SourceOp *pOp)
 
 HRESULT FlvSource::ValidateOperation(SourceOp *pOp)
 {
+  pOp;
     if (m_pCurrentOp != NULL)
     {
         return MF_E_NOTACCEPTING;
@@ -1062,9 +1061,8 @@ HRESULT FlvSource::DoStart(StartOp *pOp)
     IMFMediaEvent  *pEvent = NULL;
 
     HRESULT     hr = S_OK;
-    LONGLONG    llStartOffset = 0;
-    BOOL        bRestartFromCurrentPosition = FALSE;
-    BOOL        bSentEvents = FALSE;
+//    BOOL        bRestartFromCurrentPosition = FALSE;
+//    BOOL        bSentEvents = FALSE;
 
     hr = BeginAsyncOp(pOp);
 
@@ -1154,7 +1152,7 @@ HRESULT     FlvSource::SelectStreams(IMFPresentationDescriptor *pPD, const PROPV
     if (stream_id == 1){
       stream = audio_stream;
     }
-    else if (stream_id = 0){
+    else if (stream_id == 0){
       stream = video_stream;
     }
     if (!stream)
@@ -1621,8 +1619,9 @@ HRESULT FlvSource::CreateVideoStream(){
 
 HRESULT FlvSource::ValidatePresentationDescriptor(IMFPresentationDescriptor *pPD)
 {
+  pPD;
     HRESULT hr = S_OK;
-    DWORD cStreams = 0;
+//    DWORD cStreams = 0;
 
 //    IMFStreamDescriptor *pSD = NULL;
 
