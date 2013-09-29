@@ -12,7 +12,13 @@ HRESULT flv_parser::flv_header(::flv_header *h){
   auto reader = bigendian::binary_reader(DataPtr(), DataSize());
   reader.skip(3);
   h->version = reader.byte();
+  auto f = reader.byte();
+  if (f & flv::flv_file_header_video_mask)
+    h->has_video = 1;
+  if (f & flv::flv_file_header_audio_mask)
+    h->has_audio = 1;
   auto l = reader.ui32();
+  assert(reader.pointer == reader.length);
   return l == flv::flv_file_header_length ? S_OK : E_INVALID_PROTOCOL_FORMAT;
 }
 HRESULT flv_parser::audio_header(::audio_header*v){
@@ -270,7 +276,7 @@ HRESULT flv_parser::end_avc_packet_type(IMFAsyncResult*result, flv::avc_packet_t
 */
 HRESULT read_on_meta_data_value(amf_reader&reader, flv_meta*v){
   auto must_be_ecma_array = reader.byte();
-  if (must_be_ecma_array != (uint8_t)script_data_value_type::ecma)
+  if (must_be_ecma_array != (uint8_t)flv::script_data_value_type::ecma)
     return E_FAIL;
   HRESULT hr = S_OK;
   reader.ui32();
@@ -298,7 +304,7 @@ HRESULT read_on_meta_data_value(amf_reader&reader, flv_meta*v){
       v->audiosamplerate = reader.script_data_value_toui32();
     }
     else if (vname == "audiosamplesize"){
-      v->audiosamplesize = reader.script_data_value_toui32();
+      v->audiosamplesize = reader.script_data_value_toui8();
     }
     else if (vname == "stereo"){
       v->stereo = reader.script_data_value_toui8();
