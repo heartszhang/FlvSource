@@ -21,7 +21,7 @@
 HRESULT FlvStream::RequestSample(IUnknown* pToken)
 {
     HRESULT hr = S_OK;
-    IMFMediaSource *pSource = NULL;
+//    IMFMediaSource *pSource = NULL;
 
     // Hold the media source object's critical section.
     SourceLock lock(m_pSource);
@@ -337,8 +337,8 @@ HRESULT FlvStream::DeliverPayload(IMFSample* pSample)
 HRESULT FlvStream::DispatchSamples()
 {
     HRESULT hr = S_OK;
-    BOOL bNeedData = FALSE;
-    BOOL bEOS = FALSE;
+//    BOOL bNeedData = FALSE;
+//    BOOL bEOS = FALSE;
 
     SourceLock lock(m_pSource);
 
