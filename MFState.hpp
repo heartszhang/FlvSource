@@ -4,8 +4,8 @@ class MFState : public IUnknown {
   long refs;
 public:
   state_t state;
-  explicit MFState(state_t const&v) : state(v){}
-  MFState(){}
+  explicit MFState(state_t const&v) : state(v), refs(0){}
+  MFState() : refs(0){};
   // IUnknown
   STDMETHODIMP QueryInterface(REFIID riid, void** ppv)
   {
