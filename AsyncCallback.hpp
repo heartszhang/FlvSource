@@ -75,7 +75,7 @@ typedef std::function<HRESULT (IMFAsyncResult*)> invoke_t;
 class MFAsyncCallback : public IMFAsyncCallback {
   long refs;
   invoke_t invoke;
-  explicit MFAsyncCallback(invoke_t const& fn) :invoke(fn)
+  explicit MFAsyncCallback(invoke_t const& fn) :invoke(fn), refs(0)
   {
   }
 
