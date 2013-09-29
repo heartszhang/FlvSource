@@ -111,6 +111,7 @@ protected:
     OpList                  m_OpQueue;         // Queue of operations.
     CRITICAL_SECTION&       m_critsec;         // Protects the queue state.
     AsyncCallback<OpQueue>  m_OnProcessQueue;  // ProcessQueueAsync callback.
+    OpQueue<OP_TYPE>&operator=(const OpQueue) = delete;
 };
 
 
@@ -171,6 +172,7 @@ HRESULT OpQueue<OP_TYPE>::ProcessQueue()
 template <class OP_TYPE>
 HRESULT OpQueue<OP_TYPE>::ProcessQueueAsync(IMFAsyncResult *pResult)
 {
+  pResult;
     HRESULT hr = S_OK;
     OP_TYPE *pOp = NULL;
 
