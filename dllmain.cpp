@@ -2,15 +2,6 @@
 //
 // dllmain.cpp : Implements DLL exports and COM class factory
 //
-// THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
-// ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO
-// THE IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
-// PARTICULAR PURPOSE.
-//
-// Copyright (c) Microsoft Corporation. All rights reserved.
-//
-// Note: This source file implements the class factory for the sample
-//       media source, plus the following DLL functions:
 //       - DllMain
 //       - DllCanUnloadNow
 //       - DllRegisterServer
@@ -22,13 +13,13 @@
 #include "FlvSource.h"
 #include "FlvByteStreamHandler.h"
 
-#include <assert.h>
+#include <cassert>
 #include <strsafe.h>
 
 #include <initguid.h>
 const DWORD CHARS_IN_GUID = 39;
 
-
+//注册在HKCU,而不是HKLM
 HRESULT RegisterObject(
     HMODULE hModule,
     const GUID& guid,
@@ -39,14 +30,12 @@ HRESULT RegisterObject(
 HRESULT UnregisterObject(const GUID& guid);
 
 // {EFE6208A-0A2C-49fa-8A01-3768B559B6DA}
-DEFINE_GUID(CLSID_MFFlvByteStreamHandler,
-0xefe6208a, 0xa2c, 0x49fa, 0x8a, 0x1, 0x37, 0x68, 0xb5, 0x59, 0xb6, 0xda);
+DEFINE_GUID(CLSID_MFFlvByteStreamHandler, 0xefe6208a, 0xa2c, 0x49fa, 0x8a, 0x1, 0x37, 0x68, 0xb5, 0x59, 0xb6, 0xda);
 
 // Module Ref count
 long g_cRefModule = 0;
 
-// Handle to the DLL's module
-HMODULE g_hModule = NULL;
+HMODULE g_hModule = NULL;// Handle to the DLL's module
 
 void DllAddRef()
 {
@@ -58,10 +47,6 @@ void DllRelease()
     InterlockedDecrement(&g_cRefModule);
 }
 
-
-
-// Text strings
-
 // Description string for the bytestream handler.
 const TCHAR* sByteStreamHandlerDescription = TEXT("Flv Source ByteStreamHandler");
 
@@ -69,8 +54,7 @@ const TCHAR* sByteStreamHandlerDescription = TEXT("Flv Source ByteStreamHandler"
 const TCHAR* sFileExtension = TEXT(".flv");
 
 // Registry location for bytestream handlers.
-const TCHAR* REGKEY_MF_BYTESTREAM_HANDLERS
-                = TEXT("Software\\Microsoft\\Windows Media Foundation\\ByteStreamHandlers");
+const TCHAR* REGKEY_MF_BYTESTREAM_HANDLERS = TEXT("Software\\Microsoft\\Windows Media Foundation\\ByteStreamHandlers");
 
 
 // Functions to register and unregister the byte stream handler.
@@ -85,12 +69,11 @@ HRESULT SetKeyValue(HKEY hKey, const TCHAR *sName, const TCHAR *sValue);
 //
 // IClassFactory implementation
 //
-
 typedef HRESULT (*PFNCREATEINSTANCE)(REFIID riid, void **ppvObject);
 struct CLASS_OBJECT_INIT
 {
-    const CLSID *pClsid;
-    PFNCREATEINSTANCE pfnCreate;
+    const CLSID       *pClsid;
+    PFNCREATEINSTANCE  pfnCreate;
 };
 
 // Classes supported by this module:
@@ -104,11 +87,11 @@ class CClassFactory : public IClassFactory
 public:
 
     static HRESULT CreateInstance(
-        REFCLSID clsid,                                 // The CLSID of the object to create (from DllGetClassObject)
+        REFCLSID clsid, // The CLSID of the object to create (from DllGetClassObject)
         const CLASS_OBJECT_INIT *pClassObjectInits,     // Array of class factory data.
-        size_t cClassObjectInits,                       // Number of elements in the array.
-        REFIID riid,                                    // The IID of the interface to retrieve (from DllGetClassObject)
-        void **ppv                                      // Receives a pointer to the interface.
+        size_t cClassObjectInits, // Number of elements in the array.
+        REFIID riid, // The IID of the interface to retrieve (from DllGetClassObject)
+        void **ppv // Receives a pointer to the interface.
         )
     {
         *ppv = NULL;
@@ -529,5 +512,3 @@ HRESULT UnregisterObject(const GUID& guid)
 
     return hr;
 }
-
-
