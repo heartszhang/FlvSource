@@ -2,20 +2,10 @@
 #include <windows.h>
 #include "buffer.hpp"
 
-/*
-buffer::buffer() : m_begin(0),
-                   m_end(0),
-                   m_count(0),
-                   m_allocated(0),
-                   m_pArray(NULL)
-{
-}
-*/
 //-------------------------------------------------------------------
 // DataPtr
 // Returns a pointer to the start of the buffer.
 //-------------------------------------------------------------------
-
 BYTE* buffer::DataPtr()
 {
     return Ptr() + m_begin;

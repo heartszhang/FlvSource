@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdint>
-// Buffer class:
-// Resizable buffer used to hold the FLV data.
+
 struct buffer
 {
   buffer() = default;
@@ -34,11 +33,10 @@ private:
   uint32_t    CurrentFreeSize() const;
 
 private:
+  uint8_t  *m_pArray    = nullptr;
+  uint32_t  m_count     = 0;            // Nominal count.
+  uint32_t  m_allocated = 0;            // Actual allocation size.
 
-  uint8_t    *m_pArray = nullptr;
-  uint32_t   m_count = 0;        // Nominal count.
-  uint32_t   m_allocated = 0;    // Actual allocation size.
-
-  uint32_t   m_begin = 0;
-  uint32_t   m_end = 0;  // 1 past the last element
+  uint32_t m_begin      = 0;
+  uint32_t m_end        = 0;            // 1 past the last element
 };
