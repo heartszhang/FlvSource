@@ -1,4 +1,5 @@
 #include "bigendian.hpp"
+#include <utility>
 #include <WinSock2.h>  // htond/ ntohd
 namespace bigendian{
   uint64_t toui64(const uint8_t *input)
@@ -58,5 +59,32 @@ double binary_reader::numberic(){
   auto v = ntohd(*lv);
   pointer += sizeof(uint64_t);
   return v;
+}
+::packet binary_reader::packet(uint32_t l){
+  auto v = ::packet(l);
+  memcpy_s(v._, v.length, data+pointer, l);
+  pointer += l;
+  return std::move(v);
+}
+
+void binary_writer::ui32(uint32_t v){
+  const uint8_t *p = reinterpret_cast<const uint8_t*>(&v);
+  data[pointer] = p[3];
+  data[pointer + 1] = p[2];
+  data[pointer + 2] = p[1];
+  data[pointer + 3] = p[0];
+  pointer += sizeof(uint32_t);
+}
+void binary_writer::ui24(uint32_t v){
+  //  auto v = (uint32_t(data[pointer] << 16)) | (uint32_t(data[pointer + 1]) << 8) | (uint32_t(data[pointer + 2]));
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(&v);
+  data[pointer] = p[2];
+  data[pointer + 1] = p[1];
+  data[pointer + 2] = p[0];
+  pointer += 3;
+}
+void binary_writer::packet(::packet const&v){
+  memcpy_s(data + pointer, length - pointer, v._, v.length);
+  pointer += v.length;
 }
 }
