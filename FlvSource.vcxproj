@@ -171,6 +171,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="amf.cpp" />
+    <ClCompile Include="avcc_reader.cpp" />
     <ClCompile Include="bigendian.cpp" />
     <ClCompile Include="buffer.cpp" />
     <ClCompile Include="dllmain.cpp" />
@@ -185,6 +186,7 @@
   <ItemGroup>
     <ClInclude Include="amf.hpp" />
     <ClInclude Include="AsyncCallback.hpp" />
+    <ClInclude Include="avcc.hpp" />
     <ClInclude Include="bigendian.hpp" />
     <ClInclude Include="buffer.hpp" />
     <ClInclude Include="flv.hpp" />
@@ -197,6 +199,7 @@
     <ClInclude Include="MFState.hpp" />
     <ClInclude Include="OpQueue.h" />
     <ClInclude Include="FlvParse.hpp" />
+    <ClInclude Include="packet.hpp" />
     <ClInclude Include="tag_header.hpp" />
   </ItemGroup>
   <ItemGroup>

@@ -1,6 +1,8 @@
 #include "FlvSource.h"
+#include <wmcodecdsp.h>
 #include "AsyncCallback.hpp"
 #include "MFState.hpp"
+#include "avcc.hpp"
 #pragma warning( push )
 #pragma warning( disable : 4355 )  // 'this' used in base member initializer list
 
@@ -9,7 +11,8 @@ HRESULT CreateVideoMediaType(const flv_file_header& , IMFMediaType **ppType);
 HRESULT CreateAudioMediaType(const flv_file_header& , IMFMediaType **ppType);
 HRESULT GetStreamMajorType(IMFStreamDescriptor *pSD, GUID *pguidMajorType);
 BOOL    SampleRequestMatch(SourceOp *pOp1, SourceOp *pOp2);
-
+HRESULT NewMFMediaBuffer(const uint8_t*data, uint32_t length, IMFMediaBuffer **rtn);
+HRESULT NewNaluBuffer(uint8_t nallength, packet const&nalu, IMFMediaBuffer **rtn);
 
 //-------------------------------------------------------------------
 // Name: CreateInstance
@@ -304,7 +307,7 @@ HRESULT FlvSource::Shutdown()
         presentation_descriptor = nullptr;
         SafeRelease(&m_pBeginOpenResult);
         byte_stream = nullptr;
-        SafeRelease(&m_pCurrentOp);
+        status.processing_op = 0;
 
         // Set the state.
         m_state = STATE_SHUTDOWN;
@@ -550,25 +553,26 @@ HRESULT FlvSource::OnFlvTagHeader(IMFAsyncResult *result){
     return S_OK;
   }
 //  header.tags.push_back(tagh);
-  if (tagh.type == flv::tag_type::script_data){
+  if (tagh.type == flv::tag_type::script_data && !status.on_meta_data_ready){
     header.status.has_script_data = 1;
+//    status.on_meta_data_ready = 1;
     ReadMetaData(tagh.data_size);
   }
-  else if (tagh.type == flv::tag_type::video){
+  else if (tagh.type == flv::tag_type::video ){
     header.status.has_video = 1;
-    if (!header.video)
-      header.video.reset(new video_stream_header(tagh));
     if (!header.first_media_tag_offset)
       header.first_media_tag_offset = tagh.data_offset - flv::flv_tag_header_length;
-    SeekToNextTag(tagh);
+    if(status.first_video_tag_ready)
+      SeekToNextTag(tagh);
+    else ReadVideoHeader(tagh);
   }
   else if (tagh.type == flv::tag_type::audio){
     header.status.has_audio = 1;
-    if(!header.audio)
-      header.audio.reset(new audio_stream_header(tagh));
     if (!header.first_media_tag_offset)
       header.first_media_tag_offset = tagh.data_offset - flv::flv_tag_header_length;
-    SeekToNextTag(tagh);
+    if (status.first_audio_tag_ready)
+      SeekToNextTag(tagh);
+    else ReadAudioHeader(tagh);
   }
   else if (tagh.type == flv::tag_type::eof){  // first round scan done
     header.status.scan_once = 1;
@@ -596,9 +600,11 @@ HRESULT FlvSource::OnMetaData(IMFAsyncResult *result){
     Shutdown();
     return S_OK;
   }
+  status.on_meta_data_ready = 1;
   header.status.meta_ready = 1;
-//  ReadFlvTagHeader();
-  FinishInitialize();
+  if (header.audiocodecid != flv::audio_codec::aac && header.videocodecid != flv::video_codec::avc)
+    FinishInitialize();
+  else  ReadFlvTagHeader();
   return S_OK;
 }
 //-------------------------------------------------------------------
@@ -713,7 +719,7 @@ FlvSource::FlvSource(HRESULT& hr) :
     m_pBeginOpenResult(NULL),
     byte_stream(NULL),
     m_state(STATE_INVALID),
-    m_pCurrentOp(NULL),
+//    m_pCurrentOp(NULL),
 //    m_pSampleRequest(NULL),
     m_cRestartCounter(0),
     on_flv_header(this, &FlvSource::OnFlvHeader),
@@ -724,10 +730,11 @@ FlvSource::FlvSource(HRESULT& hr) :
     on_audio_header(this, &FlvSource::OnAudioHeader),
     on_aac_packet_type(this, &FlvSource::OnAacPacketType),
     on_audio_data(this, &FlvSource::OnAudioData),
-    on_avc_packet_type(this, &FlvSource::OnAacPacketType),
+    on_avc_packet_type(this, &FlvSource::OnAvcPacketType),
     on_video_data(this, &FlvSource::OnVideoData),
     on_video_header(this, &FlvSource::OnVideoHeader)
 {
+  ZeroMemory(&status, sizeof(status));
     DllAddRef();
 
     InitializeCriticalSection(&m_critSec);
@@ -901,21 +908,8 @@ HRESULT FlvSource::QueueAsyncOperation(SourceOp::Operation OpType)
 
 HRESULT FlvSource::BeginAsyncOp(SourceOp *pOp)
 {
-    // At this point, the current operation should be NULL (the
-    // previous operation is NULL) and the new operation (pOp)
-    // must not be NULL.
-
-    if (pOp == NULL || m_pCurrentOp != NULL)
-    {
-        assert(FALSE);
-        return E_FAIL;
-    }
-
-    // Store the new operation as the current operation.
-
-    m_pCurrentOp = pOp;
-    m_pCurrentOp->AddRef();
-
+  pOp;
+  status.processing_op = 1;
     return S_OK;
 }
 
@@ -928,26 +922,10 @@ HRESULT FlvSource::BeginAsyncOp(SourceOp *pOp)
 
 HRESULT FlvSource::CompleteAsyncOp(SourceOp *pOp)
 {
+  pOp;
     HRESULT hr = S_OK;
-
-    // At this point, the current operation (m_pCurrentOp)
-    // must match the operation that is ending (pOp).
-
-    if (pOp == NULL || m_pCurrentOp == NULL)
-    {
-        assert(FALSE);
-        return E_FAIL;
-    }
-
-    if (m_pCurrentOp != pOp)
-    {
-        assert(FALSE);
-        return E_FAIL;
-    }
-
-    // Release the current operation.
-    SafeRelease(&m_pCurrentOp);
-
+    assert(status.processing_op);
+    status.processing_op = 0;
     // Process the next operation on the queue.
     hr = ProcessQueue();
 
@@ -1034,11 +1012,7 @@ HRESULT FlvSource::DispatchOperation(SourceOp *pOp)
 HRESULT FlvSource::ValidateOperation(SourceOp *pOp)
 {
   pOp;
-    if (m_pCurrentOp != NULL)
-    {
-        return MF_E_NOTACCEPTING;
-    }
-    return S_OK;
+  return (status.processing_op) ? MF_E_NOTACCEPTING : S_OK;
 }
 
 
@@ -1293,9 +1267,9 @@ HRESULT FlvSource::DoPause(SourceOp *pOp)
 
 HRESULT FlvSource::OnStreamRequestSample(SourceOp *pOp)
 {
-    HRESULT hr = S_OK;
+    BeginAsyncOp(pOp);
     DemuxSample();
-    hr = CompleteAsyncOp(pOp);
+    HRESULT hr = CompleteAsyncOp(pOp);
     return hr;
 }
 
@@ -1306,7 +1280,7 @@ void FlvSource::DemuxSample(){
   ReadSampleHeader();
 }
 HRESULT FlvSource::ReadSampleHeader(){
-  auto hr= parser.begin_tag_header(0, &on_demux_sample_header, nullptr);
+  auto hr= parser.begin_tag_header(1, &on_demux_sample_header, nullptr);
   if (fail(hr)){
     Shutdown();
   }
@@ -1332,6 +1306,7 @@ HRESULT FlvSource::OnSampleHeader(IMFAsyncResult *result){
   }
   return hr;
 }
+
 HRESULT FlvSource::ReadVideoHeader(tag_header const&h){
   auto hr = parser.begin_video_header(&on_video_header, NewMFState(h));
   if (fail(hr))
@@ -1348,6 +1323,7 @@ HRESULT FlvSource::OnVideoHeader(IMFAsyncResult*result){
       ReadAvcPacketType(vsh);
     }
     else{
+//      byte_stream->GetCurrentPosition(&vsh.payload_offset);
       ReadVideoData(vsh);
     }
   }
@@ -1370,7 +1346,10 @@ HRESULT FlvSource::OnAudioHeader(IMFAsyncResult* result){
   if (ok(hr)){
     if (ah.codec_id == flv::audio_codec::aac)
       ReadAacPacketType(ash); // ignore return value
-    else ReadAudioData(ash);
+    else {
+//      byte_stream->GetCurrentPosition(&ash.payload_offset);
+      ReadAudioData(ash);
+    }
   }
   if (fail(hr)){
     Shutdown();
@@ -1387,14 +1366,16 @@ HRESULT FlvSource::ReadAacPacketType(audio_stream_header const&ash){
 HRESULT FlvSource::OnAacPacketType(IMFAsyncResult*result){
   auto &ash = FromAsyncResultState<audio_stream_header>(result);
   auto hr = parser.end_aac_packet_type(result, &ash.aac_packet_type);
-  if (ok(hr)) 
-    hr = byte_stream->GetCurrentPosition(&ash.data_offset);
+//  if (ok(hr)) 
+//    hr = byte_stream->GetCurrentPosition(&ash.payload_offset);
   if (ok(hr))
     ReadAudioData(ash);
+
   if (fail(hr))
     Shutdown();
   return hr;
 }
+
 HRESULT FlvSource::ReadAvcPacketType(video_stream_header const&vsh){
   auto hr = parser.begin_avc_header(&on_avc_packet_type, NewMFState(vsh));
   if (fail(hr))
@@ -1407,8 +1388,11 @@ HRESULT FlvSource::OnAvcPacketType(IMFAsyncResult*result){
   auto &vsh = FromAsyncResultState<video_stream_header>(result);
   vsh.avc_packet_type = v.avc_packet_type;
   vsh.composition_time = v.composite_time;
+//  byte_stream->GetCurrentPosition(&vsh.payload_offset);
   if (ok(hr))
+   //  OnVideoHeaderReady(vsh);
     ReadVideoData(vsh);
+    
   if (fail(hr))
     Shutdown();
   return hr;
@@ -1419,31 +1403,49 @@ HRESULT FlvSource::ReadAudioData(audio_stream_header const& ash){
     Shutdown();
   return hr;
 }
-HRESULT FlvSource::OnAudioData(IMFAsyncResult *result){
-  auto &ash = FromAsyncResultState<audio_stream_header>(result);
-  packet pack;
-  auto  hr = parser.end_audio_data(result, &pack);
+HRESULT FlvSource::DeliverAudioPacket(audio_stream_header const&ash){
   IMFMediaBufferPtr mbuf;
-  hr = MFCreateMemoryBuffer(pack.length, &mbuf);
+  auto hr = NewMFMediaBuffer(ash.payload._, ash.payload.length, &mbuf);
 
-  BYTE*pb = nullptr;
-  mbuf->Lock(&pb, nullptr, nullptr);
-  memcpy(pb, pack._, pack.length);
-  mbuf->SetCurrentLength(pack.length);
-  mbuf->Unlock();
   IMFSamplePtr sample;
   if (ok(hr))
     hr = MFCreateSample(&sample);
-  sample->AddBuffer(mbuf);
-  sample->SetSampleTime(ash.nano_time());
+  if(ok(hr)) hr = sample->AddBuffer(mbuf);
+  if(ok(hr)) hr = sample->SetSampleTime(ash.nano_time());
   if (ok(hr)){
     auto astream = static_cast<FlvStream*>(audio_stream.GetInterfacePtr());
     hr = astream->DeliverPayload(sample);
   }
   status.pending_request = 0;
+  DemuxSample();
+  return hr;
+}
+HRESULT FlvSource::OnAudioData(IMFAsyncResult *result){
+  auto &ash = FromAsyncResultState<audio_stream_header>(result);
+//  packet pack;
+  auto  hr = parser.end_audio_data(result, &ash.payload);
+  if (ok(hr) && status.first_audio_tag_ready){
+    hr = DeliverAudioPacket(ash);
+  }
+  else if(ok(hr)){
+    status.first_audio_tag_ready = 1;
+    header.audio = ash;
+    CheckFirstPacketsReady();
+  }
   if (fail(hr))
     Shutdown();
-  DemuxSample();
+  return hr;
+}
+HRESULT FlvSource::CheckFirstPacketsReady(){
+  auto ar = !header.has_audio || status.first_audio_tag_ready;
+  auto vr = !header.has_video || status.first_video_tag_ready;
+  HRESULT hr = S_OK;
+  if (ar && vr){
+    hr = FinishInitialize();
+  }
+  else {
+    hr = ReadFlvTagHeader();
+  }
   return hr;
 }
 HRESULT FlvSource::ReadVideoData(video_stream_header const& vsh){  
@@ -1452,24 +1454,29 @@ HRESULT FlvSource::ReadVideoData(video_stream_header const& vsh){
     Shutdown();
   return hr;
 }
-HRESULT FlvSource::OnVideoData(IMFAsyncResult *result){
-  auto &ash = FromAsyncResultState<video_stream_header>(result);
-  packet pack;
-  auto  hr = parser.end_video_data(result, &pack);
-
-  IMFMediaBufferPtr mbuf;
-  hr = MFCreateMemoryBuffer(pack.length, &mbuf);
-  BYTE* pb = nullptr;
-  mbuf->Lock(&pb, nullptr, nullptr);
-  memcpy(pb, pack._, pack.length);
-  mbuf->SetCurrentLength(pack.length);
-  mbuf->Unlock();
+HRESULT FlvSource::DeliverVideoPacket(video_stream_header const& vsh){
   IMFSamplePtr sample;
-  if (ok(hr))
-    hr = MFCreateSample(&sample);
-  sample->AddBuffer(mbuf);
-  sample->SetSampleTime(ash.nano_time());
-  sample->SetUINT32(MFSampleExtension_CleanPoint, ash.frame_type == flv::frame_type::key_frame ? 1 : 0);
+  auto  hr = MFCreateSample(&sample);
+  if (!status.code_private_data_sent){
+    status.code_private_data_sent = 1;
+    IMFMediaBufferPtr cpdbuf;
+    auto cpd = header.video.avcc.code_private_data();
+    hr = NewMFMediaBuffer(cpd._, cpd.length, &cpdbuf);
+    if(ok(hr))
+      hr = sample->AddBuffer(cpdbuf);
+  }
+  if (vsh.avc_packet_type == flv::avc_packet_type::avc_nalu){
+    auto nal = header.video.avcc.nal;
+    flv::nalu_reader reader(vsh.payload._, vsh.payload.length);
+    for (auto nalu = reader.nalu(); nalu.length; nalu = reader.nalu()){
+      IMFMediaBufferPtr mbuf;
+      hr = NewNaluBuffer(nal, nalu, &mbuf);//MFCreateMemoryBuffer(vsh.payload.length, &mbuf);
+      if (ok(hr)) hr = sample->AddBuffer(mbuf);
+    }
+    assert(reader.pointer == reader.length);
+  }
+  if(ok(hr)) hr = sample->SetSampleTime(vsh.nano_time());
+  if(ok(hr)) hr = sample->SetUINT32(MFSampleExtension_CleanPoint, vsh.frame_type == flv::frame_type::key_frame ? 1 : 0);
   // should set sample duration
 
   if (ok(hr)){
@@ -1477,9 +1484,24 @@ HRESULT FlvSource::OnVideoData(IMFAsyncResult *result){
     hr = astream->DeliverPayload(sample);
   }
   status.pending_request = 0;
+  DemuxSample();
+  return hr;
+}
+HRESULT FlvSource::OnVideoData(IMFAsyncResult *result){
+  auto &ash = FromAsyncResultState<video_stream_header>(result);
+  auto  hr = parser.end_video_data(result, &ash.payload);
+  if (ok(hr) && status.first_video_tag_ready){
+    hr = DeliverVideoPacket(ash);
+  }
+  else if (ok(hr)){
+    status.first_video_tag_ready = 1;
+    header.video = ash;
+    header.video.avcc = flv::avcc_reader(ash.payload._, ash.payload.length).avcc();
+    CheckFirstPacketsReady();
+  }
+
   if (fail(hr))
     Shutdown();
-  DemuxSample();
   return hr;
 }
 
@@ -1547,9 +1569,9 @@ HRESULT FlvSource::OnEndOfStream(SourceOp *pOp)
 
 HRESULT FlvSource::FinishInitialize(){
   HRESULT hr = S_OK;
-  if (header.first_media_tag_offset) {
-    hr = byte_stream->SetCurrentPosition(header.first_media_tag_offset);
-  }
+//  if (header.first_media_tag_offset) {
+//    hr = byte_stream->SetCurrentPosition(header.first_media_tag_offset - flv::flv_previous_tag_size_field_length);
+  //}
   CreateAudioStream();
   CreateVideoStream();
   hr = InitPresentationDescriptor();
@@ -1558,7 +1580,6 @@ HRESULT FlvSource::FinishInitialize(){
 }
 
 HRESULT FlvSource::CreateStream(DWORD index, IMFMediaType*media_type, IMFMediaStream**v) {
-  _com_ptr_t < _com_IIID<IMFMediaType, &__uuidof(IMFMediaType) >> pType;
   _com_ptr_t < _com_IIID < IMFStreamDescriptor, &__uuidof(IMFStreamDescriptor)>> pSD;
   _com_ptr_t < _com_IIID < IMFMediaTypeHandler, &__uuidof(IMFMediaTypeHandler)>> pHandler;
 
@@ -1573,7 +1594,7 @@ HRESULT FlvSource::CreateStream(DWORD index, IMFMediaType*media_type, IMFMediaSt
   }
   if (SUCCEEDED(hr))
   {
-    hr = pHandler->SetCurrentMediaType(pType);
+    hr = pHandler->SetCurrentMediaType(media_type);
   }
 
   // Create the new stream.
@@ -1596,7 +1617,7 @@ HRESULT FlvSource::CreateAudioStream()
   IMFMediaTypePtr media_type;
   auto hr = CreateAudioMediaType(header, &media_type);
   if (ok(hr))  // audio stream_index  is 1
-    hr = CreateStream(1, media_type.GetInterfacePtr(), &audio_stream);
+    hr = CreateStream(1, media_type, &audio_stream);
   return hr;
 }
 
@@ -1604,7 +1625,7 @@ HRESULT FlvSource::CreateVideoStream(){
   IMFMediaTypePtr media_type;
   auto hr = CreateVideoMediaType(header, &media_type);
   if (ok(hr))
-    hr = CreateStream(0, media_type.GetInterfacePtr(), &video_stream);
+    hr = CreateStream(0, media_type, &video_stream);
   return hr;
 }
 
@@ -1797,59 +1818,34 @@ HRESULT StartOp::GetPresentationDescriptor(IMFPresentationDescriptor **ppPD)
 HRESULT CreateVideoMediaType(const flv_file_header& header, IMFMediaType **ppType)
 {
     HRESULT hr = S_OK;
-
     IMFMediaType *pType = NULL;
-
     hr = MFCreateMediaType(&pType);
 
-    if (SUCCEEDED(hr))
-    {
-        hr = pType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-    }
+    if (ok(hr)) hr = pType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    if (ok(hr)) hr = pType->SetGUID(MF_MT_SUBTYPE, MEDIASUBTYPE_H264);
+//    if (ok(hr)) hr = pType->SetGUID(MF_MT_SUBTYPE, MEDIASUBTYPE_AVC1);
+        
+    if (ok(hr)) hr = MFSetAttributeSize(pType, MF_MT_FRAME_SIZE,  header.width, header.height   );
+    if (ok(hr)) hr = MFSetAttributeRatio(pType,MF_MT_FRAME_RATE, header.framerate ,1);
+    if (ok(hr)) hr = MFSetAttributeRatio(pType, MF_MT_FRAME_RATE_RANGE_MAX, header.framerate, 1);
+    if (ok(hr)) hr = MFSetAttributeRatio(pType, MF_MT_FRAME_RATE_RANGE_MIN, header.framerate / 2, 1);
+    if (ok(hr)) hr = MFSetAttributeRatio(pType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    if (ok(hr)) hr = pType->SetUINT32(MF_MT_AVG_BITRATE, header.videodatarate);
 
-    // MEDIASUBTYPE_AVC1?
-    if (SUCCEEDED(hr))
-    {
-      hr = pType->SetGUID(MF_MT_SUBTYPE, MEDIASUBTYPE_H264);
-    }
+    // header.video.payload
+//    auto ar = flv::avcc_reader(header.video.payload._, header.video.payload.length);
+//    auto avcc = ar.avcc();
+    auto cpd = header.video.avcc.code_private_data();
+    
+    if (ok(hr)) hr = pType->SetUINT32(MF_MT_MPEG2_FLAGS, header.video.avcc.nal);  // from avcC
+    if (ok(hr)) hr = pType->SetUINT32(MF_MT_MPEG2_PROFILE, header.video.avcc.profile); // eAVEncH264VProfile, from avcC
+    if (ok(hr)) hr = pType->SetUINT32(MF_MT_MPEG2_LEVEL, header.video.avcc.level);    
+    if (ok(hr)) hr = pType->SetBlob(MF_MT_USER_DATA, cpd._, cpd.length);
+// CodecPrivateData issue of Smooth Streaming 
+// H264: exactly same as stated in the spec.The field is in NAL byte stream : 0x00 0x00 0x00 0x01 SPS 0x00 0x00 0x00 0x01 PPS.No problem
 
-    // Format details.
-    if (SUCCEEDED(hr))
-    {
-        // Frame size
-
-        hr = MFSetAttributeSize(
-            pType,
-            MF_MT_FRAME_SIZE,
-            header.width,
-            header.height
-            );
-    }
-    if (SUCCEEDED(hr))
-    {
-        // Frame rate
-      //header.meta.framerate
-        hr = MFSetAttributeRatio(
-            pType,
-            MF_MT_FRAME_RATE, 
-            (uint32_t)header.framerate ,
-            1
-            );
-    }
-
-    if (SUCCEEDED(hr))
-    {
-        // Average bit rate
-
-        hr = pType->SetUINT32(MF_MT_AVG_BITRATE, header.videodatarate);
-    }
-    if (SUCCEEDED(hr))
-    {
-        // Sequence header.
-
-    }
-
-    if (SUCCEEDED(hr))
+//    if (ok(hr)) hr = pType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    if (ok(hr))
     {
         *ppType = pType;
         (*ppType)->AddRef();
@@ -1859,20 +1855,36 @@ HRESULT CreateVideoMediaType(const flv_file_header& header, IMFMediaType **ppTyp
     return hr;
 }
 
-
 HRESULT CreateAudioMediaType(const flv_file_header& header, IMFMediaType **ppType)
-{
-    HRESULT hr = S_OK;
+{    
     IMFMediaType *pType = NULL;
-
+    auto hr = MFCreateMediaType(&pType);
+    if (ok(hr)) hr = pType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+    if (ok(hr)) hr = pType->SetGUID(MF_MT_SUBTYPE, MEDIASUBTYPE_RAW_AAC1);
+    if (ok(hr) && header.audiosamplerate) hr = pType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, header.audiosamplerate);
+    if (ok(hr)) hr = pType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, header.stereo + 1);
+    if (ok(hr)) hr = pType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 1);
+    if (ok(hr)) hr = pType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, header.audiosamplesize);
+    if (ok(hr)) hr = pType->SetBlob(MF_MT_USER_DATA, header.audio.payload._, header.audio.payload.length);
+    /*
     WAVEFORMATEX format;
     ZeroMemory(&format, sizeof(format));
 
+    switch (header.audiocodecid){
+    case flv::audio_codec::aac:
     format.wFormatTag = WAVE_FORMAT_RAW_AAC1;  // raw aac1
+    break;
+    case flv::audio_codec::mp3:
+    format.wFormatTag = WAVE_FORMAT_MPEGLAYER3;
+    break;
+    default:
+    format.wFormatTag = WAVE_FORMAT_RAW_AAC1;  // raw aac1
+    break;
+    }
     format.nChannels = header.stereo + 1;
     format.nSamplesPerSec = header.audiosamplerate;
     format.wBitsPerSample = header.audiosamplesize;
-    format.nAvgBytesPerSec = header.audiodatarate / 8;
+    format.nAvgBytesPerSec = header.audiodatarate * 1024 / 8;
     format.nBlockAlign = 8; // why 8
     format.cbSize = 0;
 
@@ -1882,8 +1894,9 @@ HRESULT CreateAudioMediaType(const flv_file_header& header, IMFMediaType **ppTyp
     {
         hr = MFInitMediaTypeFromWaveFormatEx(pType, &format, sizeof(format));
     }
-
-    if (SUCCEEDED(hr))
+    //MFValidateMediaTypeSize()
+    */
+    if (ok(hr))
     {
         *ppType = pType;
         (*ppType)->AddRef();
@@ -1928,5 +1941,48 @@ BOOL SampleRequestMatch(SourceOp *pOp1, SourceOp *pOp2)
     }
 }
 
+HRESULT NewMFMediaBuffer(const uint8_t*data, uint32_t length, IMFMediaBuffer **rtn){
+  IMFMediaBufferPtr v;
+  auto hr = MFCreateMemoryBuffer(length, &v);
+  uint8_t* buffer = nullptr;
+  uint32_t max_length = 0;
+  if (ok(hr))
+    hr = v->Lock(&buffer, (DWORD*)&max_length, nullptr);
+  if (buffer){
+    memcpy_s(buffer, max_length, data, length);
+    v->SetCurrentLength(length);
+  }
+  if (ok(hr))
+    hr = v->Unlock();
+  if (ok(hr)){
+    *rtn = v;
+    (*rtn)->AddRef();
+  }
+  return hr;
+}
+HRESULT NewNaluBuffer(uint8_t nallength, packet const&nalu, IMFMediaBuffer **rtn){
+  IMFMediaBufferPtr v;
+  auto hr = MFCreateMemoryBuffer(nallength + nalu.length, &v);
+  uint8_t* buffer = nullptr;
+  uint32_t max_length = 0;
+  if (ok(hr))
+    hr = v->Lock(&buffer, (DWORD*)&max_length, nullptr);
+  uint32_t startcode = 0x00000001;
 
+  if (buffer){
+    bigendian::binary_writer writer(buffer, max_length);
+    if (nallength < 4)
+      writer.ui24(startcode);
+    else writer.ui32(startcode);
+    writer.packet(nalu);
+    v->SetCurrentLength(max_length);
+  }
+  if (ok(hr))
+    hr = v->Unlock();
+  if (ok(hr)){
+    *rtn = v;
+    (*rtn)->AddRef();
+  }
+  return hr;
+}
 #pragma warning( pop )
