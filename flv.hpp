@@ -81,12 +81,12 @@ enum class sound_rate : int8_t {
 };
 enum class sound_type : int8_t {
   mono = 0,
-    stereo = 2
+    stereo = 1
 };
 enum class aac_packet_type : int8_t {
   aac_sequence_header = 0,
     aac_raw = 1,
-    aac_end_of_seq = 2
+    aac_end_of_seq = 2,
 };
 enum class script_data_value_type : uint8_t {
   number = 0,
@@ -111,8 +111,10 @@ const static int flv_audio_header_length = 1;
 const static int flv_video_header_length = 1;
 const static int flv_aac_packet_type_length = 1;
 const static int flv_avc_packet_type_length = 4;
-const static uint8_t flv_file_header_audio_mask = 1 << 5;
-const static uint8_t flv_file_header_video_mask = 1 << 7;
+const static uint8_t flv_file_header_audio_mask = 1 << 2;
+const static uint8_t flv_file_header_video_mask = 1 << 0;
+const static uint8_t flv_tag_header_type_mask = 0x1f;
+const static uint8_t flv_tag_header_filter_mask = 5;
 }
 
 struct audio_stream_header;
@@ -124,21 +126,6 @@ struct bit_reader{
 };
 
 //AvcSpecificConfig
-struct aac_profile {
-  uint8_t const*data;
-  uint32_t config_bytes;
-  int32_t parse(){
-    bit_reader reader(data, config_bytes);
-    reader.bits(5);  // audioObjectType
-    auto sample_rate = reader.bits(4);
-    if (sample_rate = 0x0f){
-      sample_rate = reader.bits(24);
-    }
-    reader.bits(4);
-    return 0;
-  }
-};
-
 
 /*
 aligned(8) class AVCDecoderConfigurationRecord {
@@ -162,8 +149,6 @@ aligned(8) class AVCDecoderConfigurationRecord {
 }
 */
 //avc_decoder_configuration_record
-struct avc_decoder_configuratin_record;
-
 
 /*
 Sampling rate. The following values are defined:
@@ -188,33 +173,33 @@ Mono or stereo sound
 struct raw_flv_header {
   uint8_t signature[3];
   uint8_t version;
-  uint8_t:5;
-  uint8_t has_audio : 1;
-  uint8_t:1;
   uint8_t has_video : 1;
+  uint8_t:1;
+  uint8_t has_audio : 1;
+  uint8_t:5;
   uint32_t data_offset_be;
 };
 struct raw_flv_tag_header {
-uint8_t:2;
-uint8_t filter:1;
 uint8_t tag_type : 5;
+uint8_t filter:1;
+uint8_t:2;
 uint8_t data_size[3];
 uint8_t timestamp[3];
 uint8_t timestamp_extended;
 uint8_t stream_id[3];
 };
 struct raw_audio_tag_header {
-  uint8_t sound_format : 4;
-  uint8_t sound_rate : 2;
-  uint8_t sound_size : 1;
   uint8_t sound_type : 1;
+  uint8_t sound_size : 1;
+  uint8_t sound_rate : 2;
+  uint8_t sound_format : 4;
 };
 struct raw_aac_packet_type {
   uint8_t aac_packet_type;
 };
 struct raw_video_tag_header {
-  uint8_t frame_type : 4;
   uint8_t codec_id : 4;
+  uint8_t frame_type : 4;
 };
 struct raw_avc_packet_type {
   uint8_t avc_packet_type;
