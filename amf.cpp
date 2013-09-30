@@ -1,6 +1,7 @@
 #include "amf.hpp"
+#include <cassert>
 #include "flv.hpp"
-int32_t amf_reader::skip_script_data_value(){
+int32_t flv::amf_reader::skip_script_data_value(){
   auto t = byte();
   int32_t hr = 0;
   switch (flv::script_data_value_type(t)){
@@ -46,16 +47,15 @@ int32_t amf_reader::skip_script_data_value(){
   }
   return hr;
 }
-keyframes amf_reader::decode_keyframes(int32_t*ret){
+
+// only accept fields filepositions and times
+// other fields would be ignored
+keyframes flv::amf_reader::decode_keyframes(int32_t*ret){
   keyframes va;
   *ret = 0;
-  // ecma-array
-  auto t = byte();
-  if (t != (uint8_t)flv::script_data_value_type::object)
-  {
-    *ret = -1;
-    return std::move(va);
-  }
+  
+  auto t = byte(); // object
+  assert(t == (uint8_t)flv::script_data_value_type::object);
   for (bool neop = true; neop && *ret == 0;){
     auto v = script_data_string();
     if (v == "filepositions"){
@@ -81,14 +81,17 @@ keyframes amf_reader::decode_keyframes(int32_t*ret){
   }
   return va;
 }
-int32_t amf_reader::skip_script_data_object(){
+int32_t flv::amf_reader::skip_script_data_object(){
   int32_t hr = 0;
   for (auto notend = true; notend && hr == 0;){
     hr = skip_script_data_object_property(&notend);
   }
   return hr;
 }
-int32_t amf_reader::skip_script_data_object_property(bool*notend){
+
+// treat object-end-marker as a leagal property
+// terminated by object-end-marker
+int32_t flv::amf_reader::skip_script_data_object_property(bool*notend){
   auto v = script_data_string();
   if (v.empty()){
     auto x = byte();
@@ -102,7 +105,8 @@ int32_t amf_reader::skip_script_data_object_property(bool*notend){
   return skip_script_data_value();
 }
 
-int32_t amf_reader::skip_script_data_ecma_array(){
+// ecma's terminated by object-end-marker({0, 0, 9})
+int32_t flv::amf_reader::skip_script_data_ecma_array(){
   ui32();
   int32_t hr = 0;
   for (bool notend = true; notend && hr == 0;){
@@ -110,7 +114,9 @@ int32_t amf_reader::skip_script_data_ecma_array(){
   }
   return hr;
 }
-int32_t amf_reader::skip_script_data_strict_array(){
+
+//script_data strict array
+int32_t flv::amf_reader::skip_script_data_strict_array(){
   auto l = ui32();
   int32_t hr = 0;
   for (uint32_t i = 0; i < l && hr == 0; ++i){
@@ -118,42 +124,56 @@ int32_t amf_reader::skip_script_data_strict_array(){
   }
   return hr;
 }
-int32_t amf_reader::skip_script_data_string(){
+
+// script_data_string, no data_value type field
+int32_t flv::amf_reader::skip_script_data_string(){
   auto l = ui16();
   skip(l);
   return 0;
 }
-int32_t amf_reader::skip_script_data_object_end(bool*notend){
+
+// *notend = false
+// return -1 if 0-0 followed by not 9
+int32_t flv::amf_reader::skip_script_data_object_end(bool*notend){
   auto v = byte();
   *notend = false;
   return  (v == (uint8_t)flv::script_data_value_type::object_end_marker) ? 0 : -1;
 }
-int32_t amf_reader::skip_script_data_value_end(bool *notend){
+
+// script_data_value_end, {0, 0, 9}, {0, 0} has been treated as name's length
+int32_t flv::amf_reader::skip_script_data_value_end(bool *notend){
   return skip_script_data_object_end(notend);
 }
-std::string amf_reader::script_data_string(){
-  auto l = ui16();
+
+// script_data_value_string, without type-field
+std::string flv::amf_reader::script_data_string(){
+  auto l = ui16();  // length
   std::string v((const char*)data + pointer, l);
   skip(l);
   return v;
 }
-uint64_t amf_reader::script_data_value_toui64(){
-  byte();  // type
+
+//script_data_value_number to uint64_t;
+uint64_t flv::amf_reader::script_data_value_toui64(){
+  byte();  // script_data_value_type::number
   auto v = numberic();
   return static_cast<uint64_t>(v);
 }
 
-double amf_reader::script_data_value_tod(){
+// script_data_value_number
+double flv::amf_reader::script_data_value_tod(){
   byte();
   return numberic();
 }
 
-uint8_t amf_reader::script_data_value_toui8(){
-  byte(); // type
+// script_data_value_boolean to uint8_t
+uint8_t flv::amf_reader::script_data_value_toui8(){
+  byte(); // script_data_value_type::boolean
   return byte();
 }
 
-uint32_t amf_reader::script_data_value_toui32(){
+// script_data_value_number to uint32_t
+uint32_t flv::amf_reader::script_data_value_toui32(){
   byte();
   auto v = numberic();
   return static_cast<uint32_t>(v);

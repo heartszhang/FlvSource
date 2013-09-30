@@ -284,7 +284,7 @@ HRESULT flv_parser::end_avc_packet_type(IMFAsyncResult*result, flv::avc_packet_t
   return result->GetStatus();
 }
 */
-HRESULT read_on_meta_data_value(amf_reader&reader, flv_meta*v){
+HRESULT read_on_meta_data_value(flv::amf_reader&reader, flv_meta*v){
   auto must_be_ecma_array = reader.byte();
   if (must_be_ecma_array != (uint8_t)flv::script_data_value_type::ecma)
     return E_FAIL;
@@ -374,7 +374,7 @@ HRESULT read_on_meta_data_value(amf_reader&reader, flv_meta*v){
 }
 
 HRESULT flv_parser::on_meta_data(flv_meta*v) {
-  auto reader = amf_reader(DataPtr(), DataSize());
+  auto reader = flv::amf_reader(DataPtr(), DataSize());
   auto hr = reader.skip_script_data_value();
   if (ok(hr))
     hr = read_on_meta_data_value(reader,v);
