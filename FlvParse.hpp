@@ -11,21 +11,22 @@
 #include "flv_meta.hpp"
 #include "buffer.hpp"
 #include "flv.hpp"
-
+#include "avcc.hpp"
 
 struct aac_audio_spec_config;// iso-14496-3
 struct aac_raw_frame_data;
 struct flv_header{
-  uint8_t version;
-  uint8_t has_video;
-  uint8_t has_audio;
+  uint8_t version   = 0;
+  uint8_t has_video = 0;
+  uint8_t has_audio = 0;
 };
 struct tag_header {
   flv::tag_type type;
-  int8_t        filter;       //1 encrypted, 0 : no pre-preocessing
-  uint32_t      data_size;    // message size bytes
-  uint32_t      timestamp;    //milliseconds
-  uint64_t      data_offset;  // fileposition of payload
+  int8_t        filter    = 0;       //1 encrypted, 0 : no pre-preocessing
+  uint32_t      data_size = 0;    // message size bytes
+  uint32_t      timestamp = 0;    //milliseconds
+  uint32_t      stream_id = 0;
+  uint64_t      data_offset = 0;  // fileposition of payload
   uint64_t      nano_time()const{
     return 10000 * uint64_t(timestamp); // to nano seconds
   }
@@ -36,9 +37,9 @@ struct tag_header {
 
 struct audio_header {
   flv::audio_codec         codec_id;
-  flv::sound_rate          sound_rate;  // kbits
-  flv::sound_size          sound_size; // 8 /16 bits
-  flv::sound_type          sound_type;// 1 : stereo, 0 : mono
+  flv::sound_rate          sound_rate = flv::sound_rate::_44k;  // kbits
+  flv::sound_size          sound_size = flv::sound_size::_16bits; // 8 /16 bits
+  flv::sound_type          sound_type = flv::sound_type::stereo;// 1 : stereo, 0 : mono
 };
 
 struct video_header {
@@ -46,20 +47,19 @@ struct video_header {
   flv::video_codec codec_id;
 };
 struct avc_header{
-  flv::avc_packet_type avc_packet_type;
-  uint32_t composite_time;
+  flv::avc_packet_type  avc_packet_type;
+  uint32_t              composite_time    = 0;
 };
+
 // be filled after parse audio-tag header
 struct audio_stream_header : public tag_header, public audio_header{
   int32_t                       stream_id;  // Raw stream_id field.  // must be 0
-  flv::audio_codec              codec_id;   // 10 = AAC
-  flv::sound_rate               sound_rate; // 0: 5.5k, 1: 11k, 2: 22k, 3:44k
-  flv::sound_size               sound_size; // 0 : 8bit, 1 : 16bit
-  flv::sound_type               sound_type; // 0: Mono, 1: stereo
 
   flv::aac_packet_type          aac_packet_type;// if codec = 10
-//  aac_audio_spec_config*        audio_specific_config;
-  uint64_t                      payload_offset;// file position absolute
+  packet                        payload;
+//  packet aac_audio_spec_config;
+  //  aac_audio_spec_config*        audio_specific_config;
+//  uint64_t                      payload_offset = 0;// file position absolute
   audio_stream_header() = default;
   explicit audio_stream_header(tag_header const&t) : tag_header(t){};
   explicit audio_stream_header(tag_header const&t, audio_header const&ah) : tag_header(t), stream_id(0), audio_header(ah){
@@ -67,10 +67,13 @@ struct audio_stream_header : public tag_header, public audio_header{
 
   //载荷数据长度，不包含tag_header, audio_header, aac_packet_type
   uint32_t payload_length()const {
-    auto v = data_size - flv::flv_tag_header_length - flv::flv_audio_header_length;
+    auto v = data_size - flv::flv_audio_header_length;
     if (codec_id == flv::audio_codec::aac)
       v -= flv::flv_aac_packet_type_length;
     return v;
+  }
+  uint64_t payload_offset()const{
+    return data_offset + data_size - payload_length();
   }
   uint8_t channels()const{
     return uint8_t(sound_type) + 1;
@@ -84,73 +87,40 @@ struct audio_stream_header : public tag_header, public audio_header{
 };
 
 
-struct avc_decoder_configuration_record;
-struct avc_nalus;
+// struct avc_decoder_configuration_record;
+// struct avc_nalus;
 
 struct video_stream_header : public tag_header, public video_header{
   int32_t                          stream_id;  // Raw stream_id field. must be 0
   flv::avc_packet_type             avc_packet_type;// if codec = 7
   uint32_t                         composition_time;// if codec = 7
 
-  uint64_t                         payload_offset;  // after composite-time
+//  uint64_t                         payload_offset = 0;  // after composite-time
+  packet                            payload;
+  flv::avcc                         avcc;
+//  packet avc_decoder_configuration_record;
   //载荷数据长度，不包含tag_header, audio_header, avc_packet_type
   uint32_t payload_length()const{
-    auto v = data_size - flv::flv_tag_header_length - flv::flv_video_header_length;
+    auto v = data_size - flv::flv_video_header_length;
     if (codec_id == flv::video_codec::avc)
       v -= flv::flv_avc_packet_type_length; // sizeof(composite) + sizeof(avcpackettype)
     return v;
+  }
+  uint64_t payload_offset()const{
+    return data_offset + data_size - payload_length();
   }
   video_stream_header() = default;
   explicit video_stream_header(tag_header const&t) : tag_header(t){};
   video_stream_header(tag_header const&t, video_header const&v):tag_header(t), video_header(v){  }
 };
 
-struct packet{
-  uint8_t *_;
-  uint32_t length;
-  packet() :_(nullptr), length(0){}
-  packet(packet const&rhs):packet(){
-    if (rhs.length){
-      length = rhs.length;
-      _ = new uint8_t[length];
-      memcpy(_, rhs._, length);
-    }
-  }
-  packet(packet &&rhs):packet(){
-    std::swap(length, rhs.length);
-    std::swap(_, rhs._);
-  }
-  packet&operator=(packet&&rhs){
-    std::swap(length, rhs.length);
-    std::swap(_, rhs._);
-    return *this;
-  }
-  packet&operator=(packet const&rhs){
-    if (rhs.length){
-      length = rhs.length;
-      _ = new uint8_t[length];
-      memcpy(_, rhs._, length);
-    }
-    return *this;
-  }
-  packet(const uint8_t*d, uint32_t len) : length(len){
-    if (length){
-      _ = new uint8_t[length];
-      memcpy(_, d, length);
-    }
-  }
-  ~packet(){
-    if (_)
-      delete[] _;
-  }
-};
 // be filled after read the first script tag
 // FlvStreamHeader
 // Holds information from the system header.
 struct flv_file_header : public flv_meta{
   uint64_t first_media_tag_offset;
-  std::unique_ptr<video_stream_header> video;
-  std::unique_ptr<audio_stream_header> audio;
+  video_stream_header video;
+  audio_stream_header audio;
   struct {
     uint32_t file_header_ready : 1;
     uint32_t meta_ready : 1;
@@ -159,6 +129,7 @@ struct flv_file_header : public flv_meta{
     uint32_t has_audio : 1;
     uint32_t scan_once : 1;
   }status;
+  flv_file_header() :first_media_tag_offset(0){};//    *(reinterpret_cast<uint32_t*>(&status)) = 0;  }
 };
 
 typedef _com_ptr_t < _com_IIID<IMFMediaEventQueue, &__uuidof(IMFMediaEventQueue)>>                IMFMediaEventQueuePtr;
