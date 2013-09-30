@@ -1,4 +1,5 @@
 #pragma once
+#include "MFAsyncCallback.hpp"
 template<typename state_t>
 class MFState : public IUnknown {
   long refs;

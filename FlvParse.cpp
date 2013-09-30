@@ -1,4 +1,3 @@
-// #include "FlvSource.h"
 #include "FlvParse.hpp"
 #include <cassert>
 #include <vector>
@@ -83,33 +82,6 @@ HRESULT flv_parser::end_video_data(IMFAsyncResult*result, packet*v){
   return end_read<packet>(result, v);
 }
 
-/*
-HRESULT flv_parser::begin_flv_header(IMFByteStreamPtr stream, IMFAsyncCallback*cb, IUnknown*s) {
-  this->stream = stream;
-  Reserve(flv::flv_file_header_length);
-  IMFAsyncResultPtr caller_result;
-  MFCreateAsyncResult(nullptr, cb, s, &caller_result);
-  auto hr = stream->BeginRead(
-    DataPtr(), flv::flv_file_header_length,
-      MFAsyncCallback::New([this,caller_result](IMFAsyncResult*result)->HRESULT{
-          ULONG cb = 0;
-          this->stream->EndRead(result,&cb);
-          this->MoveEnd(cb);
-          auto hr = result->GetStatus();
-          if (ok(hr))
-            hr = this->check_flv_header(nullptr, nullptr);
-          caller_result->SetStatus(hr);
-          MFInvokeCallback(caller_result.GetInterfacePtr());
-          return S_OK;
-        }),
-      nullptr);
-  return hr;
-}
-HRESULT flv_parser::end_flv_header(IMFAsyncResult*result, int32_t*rtl){
-  *rtl = result->GetStatus();
-  return S_OK;
-}
-*/
 HRESULT flv_parser::tag_header(::tag_header*header){
   auto reader = bigendian::binary_reader(DataPtr(), DataSize());
   if (reader.length == 0){
@@ -120,17 +92,17 @@ HRESULT flv_parser::tag_header(::tag_header*header){
   header->type = flv::tag_type(f &  flv::flv_tag_header_type_mask);
   header->filter = (f & (1 << flv::flv_tag_header_filter_mask)) >> flv::flv_tag_header_filter_mask;
   header->data_size = reader.ui24();
-  header->timestamp = reader.ui24() + (uint32_t(reader.byte()) <<24);
+  header->nano_timestamp = uint64_t(reader.ui24() + (uint32_t(reader.byte()) << 24)) * 10000;  // millis to nano seconds
   
   header->stream_id =  reader.ui24(); 
   stream->GetCurrentPosition(&header->data_offset);
   assert(reader.pointer == reader.length);
   return S_OK;
 }
-uint32_t flv_parser::skip_previsou_tag_size(){
+HRESULT flv_parser::skip_previsou_tag_size(){
   QWORD cp;
   stream->Seek(MFBYTESTREAM_SEEK_ORIGIN::msoCurrent, sizeof(uint32_t), MFBYTESTREAM_SEEK_FLAG_CANCEL_PENDING_IO, &cp);
-  return 0;
+  return S_OK;
 }
 HRESULT flv_parser::begin_tag_header(int8_t withprevfield, IMFAsyncCallback*cb, IUnknown*s){
   if (withprevfield)
@@ -140,107 +112,12 @@ HRESULT flv_parser::begin_tag_header(int8_t withprevfield, IMFAsyncCallback*cb, 
 HRESULT flv_parser::end_tag_header(IMFAsyncResult*result, ::tag_header*v){
   return end_read<::tag_header>(result, v);
 }
-/*
-HRESULT flv_parser::begin_tag_header(int8_t withprevfield, IMFAsyncCallback*cb, IUnknown*s){
-  DWORD dlen = flv::flv_tag_header_length + withprevfield ? flv::flv_previous_tag_size_field_length : 0;
-  Reset(dlen);  //15
-  IMFAsyncResultPtr caller_result;
-  auto state = new MFState<::tag_header>(); // refs == 0
-  auto hr = MFCreateAsyncResult(state, cb, s, &caller_result);
-  if (withprevfield)
-    skip_previsou_tag_size();
-  hr = stream->BeginRead(
-      DataPtr(),
-      dlen,
-      MFAsyncCallback::New([this, caller_result, withprevfield](IMFAsyncResult*result)->HRESULT{
-        DWORD cb = 0;
-          auto hr = this->stream->EndRead(result, &cb);
-          this->MoveEnd(cb);
-          if (ok(hr))
-            hr = result->GetStatus();
-          auto &tagh = FromAsyncResult<::tag_header>(caller_result.GetInterfacePtr());
-          if (ok(hr))
-            hr = this->tag_header(&tagh);
-          caller_result->SetStatus(hr);
-          MFInvokeCallback(caller_result.GetInterfacePtr());
-          return S_OK;
-        }),
-      nullptr
-                              );
-  return hr;
-}
-
-HRESULT flv_parser::end_tag_header(IMFAsyncResult*result, ::tag_header*v){
-  auto const&th = FromAsyncResult<::tag_header>(result);
-  *v = th;
-  return result->GetStatus();
-}
-*/
 HRESULT flv_parser::begin_audio_header(IMFAsyncCallback*cb, IUnknown*s){
   return begin_read<::audio_header>(cb, s, flv::flv_audio_header_length, &flv_parser::audio_header);
 }
 HRESULT flv_parser::end_audio_header(IMFAsyncResult*result, ::audio_header*v){
   return end_read<::audio_header>(result, v);
 }
-/*
-HRESULT flv_parser::begin_audio_header(IMFAsyncCallback*cb, IUnknown*s){
-  DWORD dlen = flv::flv_audio_header_length;
-  Reset(dlen);
-  IMFAsyncResultPtr caller_result;
-  auto hr = MFCreateAsyncResult(new MFState<::audio_header>(), cb, s, &caller_result);
-  if(ok(hr))    hr = stream->BeginRead(
-    DataPtr(),
-    dlen, MFAsyncCallback::New([this, caller_result](IMFAsyncResult*result)->HRESULT{
-      DWORD cb = 0;
-      auto hr = this->stream->EndRead(result, &cb);
-      this->MoveEnd(cb);
-      if (ok(hr))
-        hr = result->GetStatus();
-      auto &ah = FromAsyncResult<::audio_header>(caller_result);
-      if (ok(hr))
-        hr = this->audio_header(&ah);
-      caller_result->SetStatus(hr);
-      MFInvokeCallback(caller_result);
-      return S_OK;
-  }), nullptr);
-  return hr;
-}
-HRESULT flv_parser::end_audio_header(IMFAsyncResult*result, ::audio_header*v){
-  auto const&ah = FromAsyncResult<::audio_header>(result);
-  *v = ah;
-  return result->GetStatus();
-}
-
-
-HRESULT flv_parser::begin_aac_packet_type(IMFAsyncCallback*cb, IUnknown*s){
-  DWORD dlen = flv::flv_aac_packet_type_length;
-  Reset(dlen);
-  IMFAsyncResultPtr caller_result;
-  auto hr = MFCreateAsyncResult(new MFState<flv::aac_packet_type>(), cb, s, &caller_result);
-  hr = stream->BeginRead(
-    DataPtr(), 
-    dlen, 
-    MFAsyncCallback::New([this, caller_result](IMFAsyncResult*result)->HRESULT{
-      DWORD cb = 0;
-      auto hr = this->stream->EndRead(result, &cb);
-      this->MoveEnd(cb);
-      if (ok(hr))
-        hr = result->GetStatus();
-      auto &t = FromAsyncResult<flv::aac_packet_type>(caller_result);
-      if(ok(hr))
-        hr = this->aac_packet_type(&t);
-      caller_result->SetStatus(hr);
-      MFInvokeCallback(caller_result);
-      return S_OK;
-  }), nullptr);
-  return hr;
-}
-HRESULT flv_parser::end_aac_packet_type(IMFAsyncResult*result, flv::aac_packet_type*v){
-  auto t = FromAsyncResult<flv::aac_packet_type>(result);
-  *v = t;
-  return result->GetStatus();
-}
-*/
 HRESULT flv_parser::begin_aac_packet_type(IMFAsyncCallback*cb, IUnknown*s){
   return begin_read<flv::aac_packet_type>(cb, s, flv::flv_aac_packet_type_length, &flv_parser::aac_packet_type);
 }
@@ -253,37 +130,6 @@ HRESULT flv_parser::begin_avc_header(IMFAsyncCallback*cb, IUnknown*s){
 HRESULT flv_parser::end_avc_header(IMFAsyncResult*result, ::avc_header*v){
   return end_read<::avc_header>(result, v);
 }
-/*
-HRESULT flv_parser::begin_avc_packet_type(IMFAsyncCallback*cb, IUnknown*s){
-  auto dlen = flv::flv_avc_packet_type_length;
-  Reset(dlen);
-  IMFAsyncResultPtr caller_result;  
-  auto hr = MFCreateAsyncResult(new MFState<::avc_header>(), cb, s, &caller_result);
-  hr = stream->BeginRead(
-    DataPtr(),
-    dlen,
-    MFAsyncCallback::New([this, caller_result](IMFAsyncResult*result)->HRESULT{
-      DWORD cb = 0;
-      auto hr = this->stream->EndRead(result, &cb);
-      this->MoveEnd(cb);
-      auto &ah = FromAsyncResult<::avc_header>(result);
-      if (ok(hr))
-        hr = result->GetStatus();
-      if(ok(hr))
-        hr = this->avc_header(&ah);
-      caller_result->SetStatus(hr);
-      MFInvokeCallback(caller_result);
-      return S_OK;
-  }), nullptr);
-  return hr;
-}
-HRESULT flv_parser::end_avc_packet_type(IMFAsyncResult*result, flv::avc_packet_type*type, uint32_t*time){
-  auto const&h = FromAsyncResult<::avc_header>(result);
-  *type = h.avc_packet_type;
-  *time = h.composite_time;
-  return result->GetStatus();
-}
-*/
 HRESULT read_on_meta_data_value(flv::amf_reader&reader, flv_meta*v){
   auto must_be_ecma_array = reader.byte();
   if (must_be_ecma_array != (uint8_t)flv::script_data_value_type::ecma)
@@ -386,31 +232,3 @@ HRESULT flv_parser::begin_on_meta_data(uint32_t meta_size, IMFAsyncCallback*cb, 
 HRESULT flv_parser::end_on_meta_data(IMFAsyncResult*result, flv_meta*v){
   return end_read<flv_meta>(result, v);
 }
-/*
-HRESULT flv_parser::begin_on_meta_data(uint32_t meta_size, IMFAsyncCallback*cb, IUnknown*s){
-  Reset(meta_size);
-  IMFAsyncResultPtr caller_result;
-  auto hr = MFCreateAsyncResult(new MFState<flv_meta>(), cb, s, &caller_result);
-  hr = stream->BeginRead(
-    DataPtr(), meta_size,
-    MFAsyncCallback::New([this, caller_result, meta_size](IMFAsyncResult*result)->HRESULT{
-          DWORD cb = 0;
-          auto hr = this->stream->EndRead(result, &cb);
-          this->MoveEnd(cb);
-          if (ok(hr))
-            hr = result->GetStatus();
-          auto &m = FromAsyncResult<flv_meta>(caller_result.GetInterfacePtr());
-          if (ok(hr))
-            hr = this->on_meta_data(meta_size, &m);
-          caller_result->SetStatus(hr);
-          MFInvokeCallback(caller_result.GetInterfacePtr());
-          return S_OK;
-        }), nullptr);
-  return hr;
-}
-HRESULT flv_parser::end_on_meta_data(IMFAsyncResult*result, flv_meta*v){
-  auto m = FromAsyncResult<flv_meta>(result);
-  *v = m;
-  return result->GetStatus();
-}
-*/

@@ -151,14 +151,9 @@ public:
     // (This method is public because the streams call it.)
     HRESULT QueueAsyncOperation(SourceOp::Operation OpType);
 
-    // Lock/Unlock:
     // Holds and releases the source's critical section. Called by the streams.
     void    Lock() { EnterCriticalSection(&m_critSec); }
     void    Unlock() { LeaveCriticalSection(&m_critSec); }
-
-    // Callbacks
-//    HRESULT OnByteStreamRead(IMFAsyncResult *pResult);  // Async callback for RequestData
-
 private:
 
     FlvSource(HRESULT& hr);
@@ -169,14 +164,13 @@ private:
     {
         return ( m_state == STATE_SHUTDOWN ? MF_E_SHUTDOWN : S_OK );
     }
-
+    // Invoke the async callback to complete the BeginOpen operation.
     HRESULT     CompleteOpen(HRESULT hrStatus);
 
     HRESULT     IsInitialized() const;
     /*
     BOOL        IsStreamTypeSupported(StreamType type) const;
     BOOL        IsStreamActive(const FlvPacketHeader& packetHdr);
-    BOOL        StreamsNeedData() const;
     */
     HRESULT     DoStart(StartOp *pOp);
     HRESULT     DoStop(SourceOp *pOp);
@@ -188,9 +182,6 @@ private:
     HRESULT     InitPresentationDescriptor();
     HRESULT     SelectStreams(IMFPresentationDescriptor *pPD, const PROPVARIANT varStart);
 
-    HRESULT     EndOfMPEGStream();
-
-//    HRESULT     CreateStream(const FlvPacketHeader& packetHdr);
     HRESULT   CreateAudioStream();
     HRESULT   CreateVideoStream();
     HRESULT   CreateStream(DWORD index, IMFMediaType*media_type, IMFMediaStream**v);
@@ -221,19 +212,17 @@ private:
     }status;
 
     flv_parser                      parser;
-
+    flv_file_header                 header;
     IMFMediaEventQueuePtr           m_pEventQueue;             // Event generator helper
     IMFPresentationDescriptorPtr    presentation_descriptor; // Presentation descriptor.
     IMFAsyncResult                  *m_pBeginOpenResult;        // Result object for async BeginOpen operation.
     IMFByteStreamPtr                byte_stream;
-    flv_file_header                 header;
     IMFMediaStreamPtr               video_stream;
     IMFMediaStreamPtr               audio_stream;
 
     DWORD                       m_cPendingEOS;              // Pending EOS notifications.
     ULONG                       m_cRestartCounter;          // Counter for sample requests.
 
-//    SourceOp                    *m_pCurrentOp;
 
     // Async callback helper.
     AsyncCallback<FlvSource> on_flv_header;
@@ -264,17 +253,21 @@ private:
     HRESULT EndOfFile();
     HRESULT ReadAudioHeader(tag_header const&);
     HRESULT OnAudioHeader(IMFAsyncResult*result);
-    HRESULT DeliverVideoPacket(video_stream_header const&);
+
+    HRESULT DeliverVideoPacket(video_packet_header const&);
+    HRESULT DeliverAvcPacket(video_packet_header const&);
+    HRESULT DeliverNAvcPacket(video_packet_header const&);
+
     HRESULT ReadVideoHeader(tag_header const&);
     HRESULT OnVideoHeader(IMFAsyncResult*result);
-    HRESULT DeliverAudioPacket(audio_stream_header const&ash);
-    HRESULT ReadAacPacketType(audio_stream_header const&);
+    HRESULT DeliverAudioPacket(audio_packet_header const&ash);
+    HRESULT ReadAacPacketType(audio_packet_header const&);
     HRESULT OnAacPacketType(IMFAsyncResult*);
-    HRESULT ReadAudioData(audio_stream_header const&);
+    HRESULT ReadAudioData(audio_packet_header const&);
     HRESULT OnAudioData(IMFAsyncResult*);
-    HRESULT ReadAvcPacketType(video_stream_header const&);
+    HRESULT ReadAvcPacketType(video_packet_header const&);
     HRESULT OnAvcPacketType(IMFAsyncResult*);
-    HRESULT ReadVideoData(video_stream_header const&);
+    HRESULT ReadVideoData(video_packet_header const&);
     HRESULT OnVideoData(IMFAsyncResult*);
     HRESULT CheckFirstPacketsReady();
 

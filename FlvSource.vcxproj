@@ -171,7 +171,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="amf.cpp" />
-    <ClCompile Include="avcc_reader.cpp" />
+    <ClCompile Include="avcc.cpp" />
     <ClCompile Include="bigendian.cpp" />
     <ClCompile Include="buffer.cpp" />
     <ClCompile Include="dllmain.cpp" />
@@ -196,11 +196,12 @@
     <ClInclude Include="FlvByteStreamHandler.h" />
     <ClInclude Include="FlvSource.h" />
     <ClInclude Include="FlvStream.h" />
+    <ClInclude Include="MFAsyncCallback.hpp" />
     <ClInclude Include="MFState.hpp" />
     <ClInclude Include="OpQueue.h" />
     <ClInclude Include="FlvParse.hpp" />
     <ClInclude Include="packet.hpp" />
-    <ClInclude Include="tag_header.hpp" />
+    <ClInclude Include="flv_raw_header.hpp" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />

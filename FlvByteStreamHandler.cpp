@@ -1,7 +1,6 @@
 #include "FlvSource.h"
 #include "FlvByteStreamHandler.h"
 
-
 //-------------------------------------------------------------------
 // FlvByteStreamHandler  class
 //-------------------------------------------------------------------
