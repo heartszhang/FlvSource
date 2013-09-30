@@ -22,7 +22,7 @@
 #pragma comment(lib, "strmiids")    // DirectShow GUIDs
 #pragma comment(lib, "Ws2_32")      // htonl, etc
 #pragma comment(lib, "shlwapi")
-
+#pragma comment(lib,"wmcodecdspuuid")
 // Common sample files.
 #include "linklist.h"
 
@@ -210,7 +210,14 @@ private:
     CRITICAL_SECTION            m_critSec;                  // critical section for thread safety
     SourceState                 m_state;                    // Current state (running, stopped, paused)
     struct {
-      uint32_t pending_request : 1;
+      uint32_t pending_request                        : 1;
+      uint32_t aac_audio_spec_config_ready            : 1;
+      uint32_t avc_decoder_configuration_record_ready : 1;
+      uint32_t first_video_tag_ready                  : 1;
+      uint32_t first_audio_tag_ready                  : 1;
+      uint32_t on_meta_data_ready                     : 1;
+      uint32_t processing_op                          : 1;
+      uint32_t code_private_data_sent                 : 1;
     }status;
 
     flv_parser                      parser;
@@ -226,7 +233,7 @@ private:
     DWORD                       m_cPendingEOS;              // Pending EOS notifications.
     ULONG                       m_cRestartCounter;          // Counter for sample requests.
 
-    SourceOp                    *m_pCurrentOp;
+//    SourceOp                    *m_pCurrentOp;
 
     // Async callback helper.
     AsyncCallback<FlvSource> on_flv_header;
@@ -248,6 +255,7 @@ private:
     HRESULT ReadFlvTagHeader();
     HRESULT OnFlvTagHeader(IMFAsyncResult *result);
     HRESULT SeekToNextTag(::tag_header const&);
+    HRESULT SeekToNextTag(uint32_t distance);
     HRESULT OnSeekToNextTag(IMFAsyncResult *result);
     HRESULT ReadMetaData(uint32_t meta_size);
     HRESULT OnMetaData(IMFAsyncResult *result);
@@ -256,8 +264,10 @@ private:
     HRESULT EndOfFile();
     HRESULT ReadAudioHeader(tag_header const&);
     HRESULT OnAudioHeader(IMFAsyncResult*result);
+    HRESULT DeliverVideoPacket(video_stream_header const&);
     HRESULT ReadVideoHeader(tag_header const&);
     HRESULT OnVideoHeader(IMFAsyncResult*result);
+    HRESULT DeliverAudioPacket(audio_stream_header const&ash);
     HRESULT ReadAacPacketType(audio_stream_header const&);
     HRESULT OnAacPacketType(IMFAsyncResult*);
     HRESULT ReadAudioData(audio_stream_header const&);
@@ -266,6 +276,7 @@ private:
     HRESULT OnAvcPacketType(IMFAsyncResult*);
     HRESULT ReadVideoData(video_stream_header const&);
     HRESULT OnVideoData(IMFAsyncResult*);
+    HRESULT CheckFirstPacketsReady();
 
     void DemuxSample();
     bool NeedDemux();
