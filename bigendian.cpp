@@ -2,8 +2,10 @@
 #include <utility>
 #include <WinSock2.h>  // htond/ ntohd
 namespace bigendian{
-  uint64_t toui64(const uint8_t *input)
+uint64_t toui64(const uint8_t *input)
 {
+  return ntohll(*(const uint64_t*)input);
+  /*
   uint64_t rval;
   uint8_t *data = (uint8_t *)&rval;
 
@@ -17,8 +19,11 @@ namespace bigendian{
   data[7] = input[0];
 
   return rval;
+  */
 }
 uint32_t touint32(uint8_t const*input){
+  return ntohl(*(const u_long*)input);
+  /*
   uint32_t r;
   uint8_t*data = (uint8_t*)&r;
   data[0] = input[3];
@@ -26,13 +31,14 @@ uint32_t touint32(uint8_t const*input){
   data[2] = input[1];
   data[3] = input[0];
   return r;
+  */
 }
 uint8_t binary_reader::byte(){
   auto v = data[pointer++];
   return v;
 }
 uint16_t binary_reader::ui16(){
-  uint16_t v = uint16_t(data[pointer + 1]) | (uint16_t(data[pointer]) << 8);
+  auto v= ntohs(*(const u_short*)(data + pointer));
   pointer += sizeof(uint16_t);
   return v;
 }
@@ -69,19 +75,24 @@ double binary_reader::numberic(){
 
 void binary_writer::ui32(uint32_t v){
   const uint8_t *p = reinterpret_cast<const uint8_t*>(&v);
-  data[pointer] = p[3];
+  data[pointer]     = p[3];
   data[pointer + 1] = p[2];
   data[pointer + 2] = p[1];
   data[pointer + 3] = p[0];
   pointer += sizeof(uint32_t);
 }
 void binary_writer::ui24(uint32_t v){
-  //  auto v = (uint32_t(data[pointer] << 16)) | (uint32_t(data[pointer + 1]) << 8) | (uint32_t(data[pointer + 2]));
   const uint8_t* p = reinterpret_cast<const uint8_t*>(&v);
-  data[pointer] = p[2];
+  data[pointer]     = p[2];
   data[pointer + 1] = p[1];
   data[pointer + 2] = p[0];
   pointer += 3;
+}
+void binary_writer::ui16(uint16_t v){
+  const uint8_t*p = reinterpret_cast<const uint8_t*>(&v);
+  data[pointer] = p[1];
+  data[pointer + 1] = p[0];
+  pointer += sizeof(uint16_t);
 }
 void binary_writer::packet(::packet const&v){
   memcpy_s(data + pointer, length - pointer, v._, v.length);
