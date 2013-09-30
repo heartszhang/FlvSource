@@ -27,18 +27,21 @@ HRESULT flv_parser::audio_header(::audio_header*v){
   v->sound_rate = (flv::sound_rate)x.sound_rate;
   v->sound_size = (flv::sound_size)x.sound_size;
   v->sound_type = (flv::sound_type)x.sound_type;
+  assert(DataSize() == sizeof(raw_audio_tag_header));
   return S_OK;
 }
 HRESULT flv_parser::video_header(::video_header*v){
   auto x = *reinterpret_cast<raw_video_tag_header*>(DataPtr());
   v->codec_id = (flv::video_codec)x.codec_id;
   v->frame_type = (flv::frame_type)x.frame_type;
+  assert(DataSize() == sizeof(raw_video_tag_header));
   return S_OK;
 }
 HRESULT flv_parser::avc_header(::avc_header*v){
   auto reader = bigendian::binary_reader(DataPtr(), DataSize());
   v->avc_packet_type = (flv::avc_packet_type)reader.byte();
   v->composite_time = reader.ui24();
+  assert(reader.pointer == reader.length);
   return S_OK;
 }
 HRESULT flv_parser::audio_data(packet*p){
@@ -108,12 +111,20 @@ HRESULT flv_parser::end_flv_header(IMFAsyncResult*result, int32_t*rtl){
 }
 */
 HRESULT flv_parser::tag_header(::tag_header*header){
-  if(DataSize() < flv::flv_tag_header_length)
-    return E_FAIL;
   auto reader = bigendian::binary_reader(DataPtr(), DataSize());
-  header->type = flv::tag_type((reader.byte() & 0xf8) >> 3);
+  if (reader.length == 0){
+    header->type = flv::tag_type::eof;
+    return S_OK;
+  }
+  auto f = reader.byte();
+  header->type = flv::tag_type(f &  flv::flv_tag_header_type_mask);
+  header->filter = (f & (1 << flv::flv_tag_header_filter_mask)) >> flv::flv_tag_header_filter_mask;
+  header->data_size = reader.ui24();
   header->timestamp = reader.ui24() + (uint32_t(reader.byte()) <<24);
-  // reader.ui24(); stream_id
+  
+  header->stream_id =  reader.ui24(); 
+  stream->GetCurrentPosition(&header->data_offset);
+  assert(reader.pointer == reader.length);
   return S_OK;
 }
 uint32_t flv_parser::skip_previsou_tag_size(){
@@ -124,8 +135,7 @@ uint32_t flv_parser::skip_previsou_tag_size(){
 HRESULT flv_parser::begin_tag_header(int8_t withprevfield, IMFAsyncCallback*cb, IUnknown*s){
   if (withprevfield)
     skip_previsou_tag_size();
-  uint32_t len = flv::flv_tag_header_length + withprevfield ? flv::flv_previous_tag_size_field_length : 0;
-  return begin_read<::tag_header>(cb, s, len, &flv_parser::tag_header);
+  return begin_read<::tag_header>(cb, s, flv::flv_tag_header_length, &flv_parser::tag_header);
 }
 HRESULT flv_parser::end_tag_header(IMFAsyncResult*result, ::tag_header*v){
   return end_read<::tag_header>(result, v);
@@ -279,7 +289,7 @@ HRESULT read_on_meta_data_value(amf_reader&reader, flv_meta*v){
   if (must_be_ecma_array != (uint8_t)flv::script_data_value_type::ecma)
     return E_FAIL;
   HRESULT hr = S_OK;
-  reader.ui32();
+  reader.ui32(); // ecma
   for (bool object_not_end = true; object_not_end && ok(hr);){
     auto vname = reader.script_data_string();
     if (vname == "duration"){
@@ -301,10 +311,17 @@ HRESULT read_on_meta_data_value(amf_reader&reader, flv_meta*v){
       v->videocodecid = flv::video_codec(reader.script_data_value_toui32());
     }
     else if (vname == "audiosamplerate"){
-      v->audiosamplerate = reader.script_data_value_toui32();
+      auto x = reader.script_data_value_toui32();
+      if (x < 4){
+        v->audiosamplerate = 44100 * (1 << x) / 8;
+      }
+      else v->audiosamplerate = x;
     }
     else if (vname == "audiosamplesize"){
-      v->audiosamplesize = reader.script_data_value_toui8();
+      v->audiosamplesize = (uint16_t)reader.script_data_value_toui32();
+    }
+    else if (vname == "audiodatarate"){
+      v->audiodatarate = reader.script_data_value_toui32();
     }
     else if (vname == "stereo"){
       v->stereo = reader.script_data_value_toui8();
@@ -315,16 +332,44 @@ HRESULT read_on_meta_data_value(amf_reader&reader, flv_meta*v){
     else if (vname == "filesize"){
       v->filesize = reader.script_data_value_toui64();
     }
+    else if (vname == "datasize"){
+      v->datasize = reader.script_data_value_toui64();
+    }
     else if (vname == "keyframes"){
       v->keyframes = std::move(reader.decode_keyframes((int32_t*)&hr));
     }
+    else if (vname == "hasAudio"){
+      v->has_audio = reader.script_data_value_toui8();
+    }
+    else if (vname == "hasVideo"){
+      v->has_video = reader.script_data_value_toui8();
+    }
+    else if (vname == "hasMetadata"){
+      v->has_metadata = reader.script_data_value_toui8();
+    }
+    else if (vname == "canSeekToEnd"){
+      v->can_seek_to_end = reader.script_data_value_toui8();
+    }
+    else if (vname == "lasttimestamp"){
+      v->last_timestamp = reader.script_data_value_toui32();
+    }
+    else if (vname == "lastkeyframetimestamp"){
+      v->last_keyframe_timestamp= reader.script_data_value_toui32();
+    }
+    else if (vname == "audiosize"){
+      v->audiosize = reader.script_data_value_toui32();
+    }
+    else if (vname == "audiodelay"){
+      v->audiodelay= reader.script_data_value_toui32();
+    }
     else if (vname == ""){
       hr = reader.skip_script_data_value_end(&object_not_end);
-    }
+    } 
     else{
       hr = reader.skip_script_data_value();
     }
   }
+  assert(reader.pointer == reader.length);
   return hr;
 }
 
