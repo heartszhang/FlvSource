@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include <cstring>
+#include <cstring>  //memcpy_s
 #include <utility>
 struct packet{
   uint8_t *_      = nullptr;
