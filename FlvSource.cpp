@@ -292,9 +292,14 @@ HRESULT FlvSource::Shutdown()
     if (SUCCEEDED(hr))
     {
         // Shut down the stream objects.
-//      audio_stream->Shutdown();
-//      video_stream->Shutdown();
-
+      if (audio_stream){
+        auto as = static_cast<FlvStream*>(audio_stream.GetInterfacePtr());
+        as->Shutdown();
+      }
+      if (video_stream){
+        auto vs = static_cast<FlvStream*>(video_stream.GetInterfacePtr());
+        vs->Shutdown();
+      }
         // Shut down the event queue.
         if (m_pEventQueue)
         {
