@@ -1,10 +1,15 @@
-#include "FlvSource.h"
+﻿#include "FlvSource.h"
 
 #pragma warning( push )
 #pragma warning( disable : 4355 )  // 'this' used in base member initializer list
 
-/* Public class methods */
-
+class SourceLock
+{
+  FlvSource *source;
+public:
+  SourceLock(FlvSource *pSource);
+  ~SourceLock();
+};
 
 //-------------------------------------------------------------------
 // IMFMediaStream methods
@@ -24,7 +29,7 @@ HRESULT FlvStream::RequestSample(IUnknown* pToken)
 //    IMFMediaSource *pSource = NULL;
 
     // Hold the media source object's critical section.
-    SourceLock lock(m_pSource);
+    SourceLock lock(source);
 
     hr = CheckShutdown();
     if (FAILED(hr))
@@ -45,7 +50,7 @@ HRESULT FlvStream::RequestSample(IUnknown* pToken)
         goto done;
     }
 
-    if (eos && m_Samples.IsEmpty())
+    if (eos && m_Samples.empty())
     {
         // This stream has already reached the end of the stream, and the
         // sample queue is empty.
@@ -53,11 +58,7 @@ HRESULT FlvStream::RequestSample(IUnknown* pToken)
         goto done;
     }
 
-    hr = m_Requests.InsertBack(pToken);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
+    m_Requests.push_back(pToken);
 
     // Dispatch the request.
     hr = DispatchSamples();
@@ -71,33 +72,17 @@ done:
     {
         // An error occurred. Send an MEError even from the source,
         // unless the source is already shut down.
-        hr = m_pSource->QueueEvent(MEError, GUID_NULL, hr, NULL);
+      hr = source->QueueEvent(MEError, GUID_NULL, hr, NULL);
     }
     return hr;
 }
 
-
-
-//-------------------------------------------------------------------
-// Public non-interface methods
-//-------------------------------------------------------------------
-
-
 FlvStream::FlvStream(FlvSource *pSource, IMFStreamDescriptor *pSD, HRESULT& hr) :
-    m_cRef(1),
-    event_queue(NULL),
-    m_state(STATE_STOPPED),
-    activated(false),
-    stream_descriptor(pSD),
-    eos(false)
+source(pSource),//出现互相引用的情况，所以不addref
+    stream_descriptor(pSD)
 {
     DllAddRef();
-
-    assert(pSource != NULL);
-    assert(pSD != NULL);
-
-    m_pSource = pSource;
-    m_pSource->AddRef();
+    assert(pSource != NULL && pSD != NULL);
 
     // Create the media event queue.
     hr = MFCreateEventQueue(&event_queue);
@@ -106,8 +91,6 @@ FlvStream::FlvStream(FlvSource *pSource, IMFStreamDescriptor *pSD, HRESULT& hr) 
 FlvStream::~FlvStream()
 {
     assert(m_state == STATE_SHUTDOWN);
-    SafeRelease(&m_pSource);
-
     DllRelease();
 }
 
@@ -120,7 +103,7 @@ FlvStream::~FlvStream()
 
 HRESULT FlvStream::Activate(bool act)
 {
-    SourceLock lock(m_pSource);
+    SourceLock lock(source);
 
     if (act == activated)
     {
@@ -131,8 +114,8 @@ HRESULT FlvStream::Activate(bool act)
 
     if (!act)
     {
-        m_Samples.Clear();
-        m_Requests.Clear();
+        m_Samples.clear();
+        m_Requests.clear();
     }
 
     return S_OK;
@@ -148,7 +131,7 @@ HRESULT FlvStream::Activate(bool act)
 
 HRESULT FlvStream::Start(const PROPVARIANT* varStart)
 {
-    SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
     HRESULT hr = S_OK;
 
@@ -182,7 +165,7 @@ HRESULT FlvStream::Start(const PROPVARIANT* varStart)
 
 HRESULT FlvStream::Pause()
 {
-    SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
     HRESULT hr = S_OK;
 
@@ -206,7 +189,7 @@ HRESULT FlvStream::Pause()
 
 HRESULT FlvStream::Stop()
 {
-    SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
     HRESULT hr = S_OK;
 
@@ -214,8 +197,8 @@ HRESULT FlvStream::Stop()
 
     if (SUCCEEDED(hr))
     {
-        m_Requests.Clear();
-        m_Samples.Clear();
+        m_Requests.clear();
+        m_Samples.clear();
 
         m_state = STATE_STOPPED;
 
@@ -234,7 +217,7 @@ HRESULT FlvStream::Stop()
 
 HRESULT FlvStream::EndOfStream()
 {
-    SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
     eos = true;
     // will notify source eos
@@ -249,7 +232,7 @@ HRESULT FlvStream::EndOfStream()
 
 HRESULT FlvStream::Shutdown()
 {
-    SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
     HRESULT hr = S_OK;
 
@@ -266,8 +249,8 @@ HRESULT FlvStream::Shutdown()
         }
 
         // Release objects.
-        m_Samples.Clear();
-        m_Requests.Clear();
+        m_Samples.clear();
+        m_Requests.clear();
         event_queue = nullptr;
         stream_descriptor = nullptr;
 
@@ -294,12 +277,12 @@ const DWORD SAMPLE_QUEUE = 2;               // How many samples does each stream
 
 bool FlvStream::NeedsData()
 {
-    SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
     // Note: The stream tries to keep a minimum number of samples
     // queued ahead.
 
-    return (activated && !eos && (m_Samples.GetCount() < SAMPLE_QUEUE));
+    return (activated && !eos && (m_Samples.size() < SAMPLE_QUEUE));
 }
 
 
@@ -310,19 +293,14 @@ bool FlvStream::NeedsData()
 
 HRESULT FlvStream::DeliverPayload(IMFSample* pSample)
 {
-    SourceLock lock(m_pSource);
-
-    HRESULT hr = S_OK;
+  SourceLock lock(source);
 
     // why not pSample->addref()
     // Queue the sample.
-    hr = m_Samples.InsertBack(pSample);
-    
+    m_Samples.push_back(pSample);
+
     // Deliver the sample if there is an outstanding request.
-    if (SUCCEEDED(hr))
-    {
-        hr = DispatchSamples();
-    }
+    HRESULT  hr = DispatchSamples();
 
     return hr;
 }
@@ -340,7 +318,7 @@ HRESULT FlvStream::DispatchSamples()
 //    BOOL bNeedData = FALSE;
 //    BOOL bEOS = FALSE;
 
-    SourceLock lock(m_pSource);
+    SourceLock lock(source);
 
     // An I/O request can complete after the source is paused, stopped, or
     // shut down. Do not deliver samples unless the source is running.
@@ -353,23 +331,21 @@ HRESULT FlvStream::DispatchSamples()
 
 
     // Deliver as many samples as we can.
-    while (!m_Samples.IsEmpty() && !m_Requests.IsEmpty())
+    while (!m_Samples.empty() && !m_Requests.empty())
     {
         // Pull the next sample from the queue.
-        hr = m_Samples.RemoveFront(&pSample);
+      pSample = m_Samples.pop_front();
 
         // Pull the next request token from the queue. Tokens can be NULL.
-        hr = m_Requests.RemoveFront(&pToken);
-
-        if (pToken)
-        {
+      pToken = m_Requests.pop_front();
+      assert(pSample);
             // Set the token on the sample.
-            hr = pSample->SetUnknown(MFSampleExtension_Token, pToken);
-            if (FAILED(hr))
-            {
-                goto done;
-            }
-        }
+      if(pToken)
+        hr = pSample->SetUnknown(MFSampleExtension_Token, pToken);
+      if (FAILED(hr))
+      {
+        goto done;
+      }
 
         // Send an MEMediaSample event with the sample.
         hr = event_queue->QueueEventParamUnk(
@@ -381,7 +357,7 @@ HRESULT FlvStream::DispatchSamples()
         }
     }
 
-    if (m_Samples.IsEmpty() && eos)
+    if (m_Samples.empty() && eos)
     {
         // The sample queue is empty AND we have reached the end of the source
         // stream. Notify the pipeline by sending the end-of-stream event.
@@ -391,14 +367,14 @@ HRESULT FlvStream::DispatchSamples()
 
         // Notify the source. It will send the end-of-presentation event.
         // hr = m_pSource->QueueAsyncOperation(SourceOp::OP_END_OF_STREAM);
-        hr = m_pSource->AsyncEndOfStream();
+        hr = source->AsyncEndOfStream();
     }
     else if (NeedsData())
     {
         // The sample queue is empty; the request queue is not empty; and we
         // have not reached the end of the stream. Ask for more data.
         //hr = m_pSource->QueueAsyncOperation(SourceOp::OP_REQUEST_DATA);
-      hr = m_pSource->AsyncRequestData();
+      hr = source->AsyncRequestData();
     }
 
 done:
@@ -406,7 +382,7 @@ done:
     {
         // An error occurred. Send an MEError even from the source,
         // unless the source is already shut down.
-        m_pSource->QueueEvent(MEError, GUID_NULL, hr, NULL);
+      source->QueueEvent(MEError, GUID_NULL, hr, NULL);
     }
 
     SafeRelease(&pSample);
@@ -421,14 +397,14 @@ done:
 
 HRESULT FlvStream::GetMediaSource(IMFMediaSource** ppMediaSource)
 {
-  SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
   if (ppMediaSource == NULL)
   {
     return E_POINTER;
   }
 
-  if (m_pSource == NULL)
+  if (source == NULL)
   {
     return E_UNEXPECTED;
   }
@@ -441,7 +417,7 @@ HRESULT FlvStream::GetMediaSource(IMFMediaSource** ppMediaSource)
   // (Does not hold the source's critical section.)
   if (SUCCEEDED(hr))
   {
-    hr = m_pSource->QueryInterface(IID_PPV_ARGS(ppMediaSource));
+    hr = source->QueryInterface(IID_PPV_ARGS(ppMediaSource));
   }
   return hr;
 }
@@ -454,7 +430,7 @@ HRESULT FlvStream::GetMediaSource(IMFMediaSource** ppMediaSource)
 
 HRESULT FlvStream::GetStreamDescriptor(IMFStreamDescriptor** ppStreamDescriptor)
 {
-  SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
   if (ppStreamDescriptor == NULL)
   {
@@ -488,7 +464,7 @@ HRESULT FlvStream::BeginGetEvent(IMFAsyncCallback* pCallback, IUnknown* punkStat
 {
   HRESULT hr = S_OK;
 
-  SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
   hr = CheckShutdown();
 
@@ -504,7 +480,7 @@ HRESULT FlvStream::EndGetEvent(IMFAsyncResult* pResult, IMFMediaEvent** ppEvent)
 {
   HRESULT hr = S_OK;
 
-  SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
   hr = CheckShutdown();
 
@@ -524,7 +500,7 @@ HRESULT FlvStream::GetEvent(DWORD dwFlags, IMFMediaEvent** ppEvent)
 
   { // scope for lock
 
-    SourceLock lock(m_pSource);
+    SourceLock lock(source);
 
     // Check shutdown
     hr = CheckShutdown();
@@ -551,7 +527,7 @@ HRESULT FlvStream::QueueEvent(MediaEventType met, REFGUID guidExtendedType, HRES
 {
   HRESULT hr = S_OK;
 
-  SourceLock lock(m_pSource);
+  SourceLock lock(source);
 
   hr = CheckShutdown();
 
@@ -569,14 +545,13 @@ HRESULT FlvStream::QueueEvent(MediaEventType met, REFGUID guidExtendedType, HRES
 // FlvStream::SourceLock constructor - locks the source
 //-------------------------------------------------------------------
 
-FlvStream::SourceLock::SourceLock(FlvSource *pSource)
-: m_pSource(NULL)
+SourceLock::SourceLock(FlvSource *pSource)
+: source(pSource)
 {
-  if (pSource)
+  if (source)
   {
-    m_pSource = pSource;
-    m_pSource->AddRef();
-    m_pSource->Lock();
+    source->AddRef();
+    source->Lock();
   }
 }
 
@@ -584,12 +559,12 @@ FlvStream::SourceLock::SourceLock(FlvSource *pSource)
 // FlvStream::SourceLock destructor - unlocks the source
 //-------------------------------------------------------------------
 
-FlvStream::SourceLock::~SourceLock()
+SourceLock::~SourceLock()
 {
-  if (m_pSource)
+  if (source)
   {
-    m_pSource->Unlock();
-    m_pSource->Release();
+    source->Unlock();
+    source->Release();
   }
 }
 //-------------------------------------------------------------------
