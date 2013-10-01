@@ -66,7 +66,7 @@ enum SourceState
 
 
 // Represents a request for an asynchronous operation.
-
+/*
 class SourceOp : public IUnknown
 {
 public:
@@ -114,8 +114,9 @@ protected:
     IMFPresentationDescriptor   *m_pPD; // Presentation descriptor for Start operations.
 
 };
+*/
 // FlvSource: The media source object.
-class FlvSource : public OpQueue<SourceOp>, public IMFMediaSource
+class FlvSource : public IMFMediaSource
 {
 public:
     static HRESULT CreateInstance(FlvSource **ppSource);
@@ -149,8 +150,10 @@ public:
 
     // Queues an asynchronous operation, specify by op-type.
     // (This method is public because the streams call it.)
-    HRESULT QueueAsyncOperation(SourceOp::Operation OpType);
-
+    //HRESULT QueueAsyncOperation(SourceOp::Operation OpType);
+    // called by streams
+    HRESULT AsyncRequestData();
+    HRESULT AsyncEndOfStream();
     // Holds and releases the source's critical section. Called by the streams.
     void    Lock() { EnterCriticalSection(&m_critSec); }
     void    Unlock() { LeaveCriticalSection(&m_critSec); }
@@ -172,15 +175,22 @@ private:
     BOOL        IsStreamTypeSupported(StreamType type) const;
     BOOL        IsStreamActive(const FlvPacketHeader& packetHdr);
     */
-    HRESULT     DoStart(StartOp *pOp);
-    HRESULT     DoStop(SourceOp *pOp);
-    HRESULT     DoPause(SourceOp *pOp);
 
-    HRESULT     OnStreamRequestSample(SourceOp *pOp);
-    HRESULT     OnEndOfStream(SourceOp *pOp);
+    HRESULT AsyncStart(IMFPresentationDescriptor*, PROPVARIANT const*);
+    HRESULT AsyncStop();
+    HRESULT AsyncPause();
+    HRESULT AsyncDo(IMFAsyncCallback*, IUnknown*);
+
+//    friend MFAsyncCallback;
+    HRESULT     DoStart(IMFPresentationDescriptor*, PROPVARIANT const*);
+    HRESULT     DoStop();
+    HRESULT     DoPause();
+
+    HRESULT     DoRequestData();
+    HRESULT     DoEndOfStream();
 
     HRESULT     InitPresentationDescriptor();
-    HRESULT     SelectStreams(IMFPresentationDescriptor *pPD, const PROPVARIANT varStart);
+    HRESULT     SelectStreams(IMFPresentationDescriptor *pPD, const PROPVARIANT *varStart);
 
     HRESULT   CreateAudioStream();
     HRESULT   CreateVideoStream();
@@ -190,10 +200,11 @@ private:
     // Handler for async errors.
     void        StreamingError(HRESULT hr);
 
-    HRESULT     BeginAsyncOp(SourceOp *pOp);
-    HRESULT     CompleteAsyncOp(SourceOp *pOp);
-    HRESULT     DispatchOperation(SourceOp *pOp);
-    HRESULT     ValidateOperation(SourceOp *pOp);
+    HRESULT     BeginAsyncOp();
+    HRESULT     CompleteAsyncOp();
+
+    HRESULT     DoOperation(SourceOp *pOp);
+    HRESULT     ValidateOperation();
 
 private:
     long                        m_cRef;                     // reference count
