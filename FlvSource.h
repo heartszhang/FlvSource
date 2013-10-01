@@ -24,10 +24,9 @@
 #pragma comment(lib, "shlwapi")
 #pragma comment(lib,"wmcodecdspuuid")
 // Common sample files.
-#include "linklist.h"
+#include "InterfaceList.hpp"
 
 #include "asynccallback.hpp"
-#include "OpQueue.h"
 
 
 template <class T> void SafeRelease(T **ppT)
@@ -48,8 +47,8 @@ class FlvSource;
 class FlvStream;
 class SourceOp;
 
-typedef ComPtrList<IMFSample>       SampleList;
-typedef ComPtrList<IUnknown, true>  TokenList;    // List of tokens for IMFMediaStream::RequestSample
+typedef InterfaceList<IMFSample>       SampleList;
+typedef InterfaceList<IUnknown>  TokenList;    // List of tokens for IMFMediaStream::RequestSample
 
 enum SourceState
 {
