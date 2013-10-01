@@ -10,7 +10,7 @@
 HRESULT CreateVideoMediaType(const flv_file_header& , IMFMediaType **ppType);
 HRESULT CreateAudioMediaType(const flv_file_header& , IMFMediaType **ppType);
 HRESULT GetStreamMajorType(IMFStreamDescriptor *pSD, GUID *pguidMajorType);
-BOOL    SampleRequestMatch(SourceOp *pOp1, SourceOp *pOp2);
+//BOOL    SampleRequestMatch(SourceOp *pOp1, SourceOp *pOp2);
 HRESULT NewMFMediaBuffer(const uint8_t*data, uint32_t length, IMFMediaBuffer **rtn);
 HRESULT NewNaluBuffer(uint8_t nallength, packet const&nalu, IMFMediaBuffer **rtn);
 
@@ -269,7 +269,7 @@ HRESULT FlvSource::Pause()
     // Queue the operation.
     if (SUCCEEDED(hr))
     {
-        hr = QueueAsyncOperation(SourceOp::OP_PAUSE);
+      hr = AsyncPause();// QueueAsyncOperation(SourceOp::OP_PAUSE);
     }
 
     LeaveCriticalSection(&m_critSec);
@@ -317,7 +317,14 @@ HRESULT FlvSource::Shutdown()
     return hr;
 }
 
-
+struct _prop_variant_t : PROPVARIANT{
+  _prop_variant_t();
+  ~_prop_variant_t();
+  _prop_variant_t(const _prop_variant_t&);
+  _prop_variant_t(PROPVARIANT const*);
+  _prop_variant_t&operator=(_prop_variant_t&);
+  _prop_variant_t&operator=(PROPVARIANT const*);
+};
 //-------------------------------------------------------------------
 // Start
 // Starts or seeks the media source.
@@ -331,7 +338,6 @@ HRESULT FlvSource::Start(
 {
 
     HRESULT hr = S_OK;
-    SourceOp *pAsyncOp = NULL;
 
     // Check parameters.
 
@@ -392,27 +398,21 @@ HRESULT FlvSource::Start(
     }
 
     // The operation looks OK. Complete the operation asynchronously.
-
-    hr = SourceOp::CreateStartOp(pPresentationDescriptor, &pAsyncOp);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pAsyncOp->SetData(*pvarStartPos);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = QueueOperation(pAsyncOp);
-
+    hr = AsyncStart(pPresentationDescriptor, pvarStartPos);
 done:
-    SafeRelease(&pAsyncOp);
     LeaveCriticalSection(&m_critSec);
     return hr;
 }
 
+HRESULT FlvSource::AsyncStart(IMFPresentationDescriptor* pd, PROPVARIANT const*startpos){
+  IMFPresentationDescriptorPtr spd(pd);
+  _prop_variant_t spos = startpos;
+  return AsyncDo(MFAsyncCallback::New([spd, spos, this](IMFAsyncResult*result)->HRESULT{
+    auto hr = this->DoStart(spd, &spos);
+    result->SetStatus(hr);
+    return S_OK;
+  }), this);  // state add this's ref
+}
 
 //-------------------------------------------------------------------
 // Stop
@@ -437,7 +437,7 @@ HRESULT FlvSource::Stop()
     // Queue the operation.
     if (SUCCEEDED(hr))
     {
-        hr = QueueAsyncOperation(SourceOp::OP_STOP);
+      hr = AsyncStop();// QueueAsyncOperation(SourceOp::OP_STOP);
     }
 
     LeaveCriticalSection(&m_critSec);
@@ -634,19 +634,15 @@ HRESULT FlvSource::EndOpen(IMFAsyncResult *pResult)
 /* Private methods */
 
 FlvSource::FlvSource(HRESULT& hr) :
-    OpQueue(m_critSec),
     m_cRef(1),
     m_pEventQueue(NULL),
     presentation_descriptor(NULL),
     m_pBeginOpenResult(NULL),
     byte_stream(NULL),
     m_state(STATE_INVALID),
-//    m_pCurrentOp(NULL),
-//    m_pSampleRequest(NULL),
     m_cRestartCounter(0),
     on_flv_header(this, &FlvSource::OnFlvHeader),
     on_tag_header(this, &FlvSource::OnFlvTagHeader),
-//    on_seek_to_next_tag(this, &FlvSource::OnSeekToNextTag),
     on_meta_data(this, &FlvSource::OnMetaData),
     on_demux_sample_header(this, &FlvSource::OnSampleHeader),
     on_audio_header(this, &FlvSource::OnAudioHeader),
@@ -805,6 +801,7 @@ done:
 // OpQueue<SourceOp>::QueueOperation, which takes a SourceOp pointer.
 //-------------------------------------------------------------------
 
+/*
 HRESULT FlvSource::QueueAsyncOperation(SourceOp::Operation OpType)
 {
     HRESULT hr = S_OK;
@@ -820,7 +817,7 @@ HRESULT FlvSource::QueueAsyncOperation(SourceOp::Operation OpType)
     SafeRelease(&pOp);
     return hr;
 }
-
+*/
 //-------------------------------------------------------------------
 // BeginAsyncOp
 //
@@ -828,9 +825,8 @@ HRESULT FlvSource::QueueAsyncOperation(SourceOp::Operation OpType)
 // begining of any asynchronous operation.
 //-------------------------------------------------------------------
 
-HRESULT FlvSource::BeginAsyncOp(SourceOp *pOp)
+HRESULT FlvSource::BeginAsyncOp()
 {
-  pOp;
   status.processing_op = 1;
     return S_OK;
 }
@@ -842,81 +838,14 @@ HRESULT FlvSource::BeginAsyncOp(SourceOp *pOp)
 // end of any asynchronous operation.
 //-------------------------------------------------------------------
 
-HRESULT FlvSource::CompleteAsyncOp(SourceOp *pOp)
+HRESULT FlvSource::CompleteAsyncOp()
 {
-  pOp;
-    HRESULT hr = S_OK;
     assert(status.processing_op);
     status.processing_op = 0;
     // Process the next operation on the queue.
-    hr = ProcessQueue();
-
-    return hr;
+//    auto hr = DispatchOperations();
+    return S_OK;
 }
-
-//-------------------------------------------------------------------
-// DispatchOperation
-//
-// Performs the asynchronous operation indicated by pOp.
-//
-// NOTE:
-// This method implements the pure-virtual OpQueue::DispatchOperation
-// method. It is always called from a work-queue thread.
-//-------------------------------------------------------------------
-
-HRESULT FlvSource::DispatchOperation(SourceOp *pOp)
-{
-    EnterCriticalSection(&m_critSec);
-
-    HRESULT hr = S_OK;
-
-    if (m_state == STATE_SHUTDOWN)
-    {
-        LeaveCriticalSection(&m_critSec);
-
-        return S_OK; // Already shut down, ignore the request.
-    }
-
-    switch (pOp->Op())
-    {
-
-    // IMFMediaSource methods:
-
-    case SourceOp::OP_START:
-        hr = DoStart((StartOp*)pOp);
-        break;
-
-    case SourceOp::OP_STOP:
-        hr = DoStop(pOp);
-        break;
-
-    case SourceOp::OP_PAUSE:
-        hr = DoPause(pOp);
-        break;
-
-    // Operations requested by the streams:
-
-    case SourceOp::OP_REQUEST_DATA:
-        hr = OnStreamRequestSample(pOp);
-        break;
-
-    case SourceOp::OP_END_OF_STREAM:
-        hr = OnEndOfStream(pOp);
-        break;
-
-    default:
-        hr = E_UNEXPECTED;
-    }
-
-    if (FAILED(hr))
-    {
-        StreamingError(hr);
-    }
-
-    LeaveCriticalSection(&m_critSec);
-    return hr;
-}
-
 
 //-------------------------------------------------------------------
 // ValidateOperation
@@ -931,9 +860,8 @@ HRESULT FlvSource::DispatchOperation(SourceOp *pOp)
 // Implements the pure-virtual OpQueue::ValidateOperation method.
 //-------------------------------------------------------------------
 
-HRESULT FlvSource::ValidateOperation(SourceOp *pOp)
+HRESULT FlvSource::ValidateOperation()
 {
-  pOp;
   return (status.processing_op) ? MF_E_NOTACCEPTING : S_OK;
 }
 
@@ -949,38 +877,21 @@ HRESULT FlvSource::ValidateOperation(SourceOp *pOp)
 // Start() method fails if the caller requests a seek.
 //-------------------------------------------------------------------
 
-HRESULT FlvSource::DoStart(StartOp *pOp)
+HRESULT FlvSource::DoStart(IMFPresentationDescriptor*pd, PROPVARIANT const*startpos)
 {
-    assert(pOp->Op() == SourceOp::OP_START);
+  auto hr = ValidateOperation();
+  assert(ok(hr));  // overlapped operations arenot permitted
+  hr = BeginAsyncOp();
 
-    IMFPresentationDescriptor *pPD = NULL;
-    IMFMediaEvent  *pEvent = NULL;
-
-    HRESULT     hr = S_OK;
-//    BOOL        bRestartFromCurrentPosition = FALSE;
-//    BOOL        bSentEvents = FALSE;
-
-    hr = BeginAsyncOp(pOp);
-
-    // Get the presentation descriptor from the SourceOp object.
-    // This is the PD that the caller passed into the Start() method.
-    // The PD has already been validated.
-    if (SUCCEEDED(hr))
-    {
-        hr = pOp->GetPresentationDescriptor(&pPD);
-    }
     // Because this sample does not support seeking, the start
     // position must be 0 (from stopped) or "current position."
 
     // If the sample supported seeking, we would need to get the
     // start position from the PROPVARIANT data contained in pOp.
 
-    if (SUCCEEDED(hr))
-    {
-        // Select/deselect streams, based on what the caller set in the PD.
-        // This method also sends the MENewStream/MEUpdatedStream events.
-        hr = SelectStreams(pPD, pOp->Data());
-    }
+    // Select/deselect streams, based on what the caller set in the PD.
+    // This method also sends the MENewStream/MEUpdatedStream events.
+    hr = SelectStreams(pd, startpos);
 
     if (SUCCEEDED(hr))
     {
@@ -991,7 +902,7 @@ HRESULT FlvSource::DoStart(StartOp *pOp)
             MESourceStarted,
             GUID_NULL,
             S_OK,
-            &pOp->Data()
+            startpos
             );
     }
 
@@ -1007,10 +918,8 @@ HRESULT FlvSource::DoStart(StartOp *pOp)
             MESourceStarted, GUID_NULL, hr, NULL);
     }
 
-    CompleteAsyncOp(pOp);
+    CompleteAsyncOp();
 
-    SafeRelease(&pEvent);
-    SafeRelease(&pPD);
     return hr;
 }
 
@@ -1019,7 +928,7 @@ HRESULT FlvSource::DoStart(StartOp *pOp)
 // Called during START operations to select and deselect streams.
 // This method also sends the MENewStream/MEUpdatedStream events.
 //-------------------------------------------------------------------
-HRESULT     FlvSource::SelectStreams(IMFPresentationDescriptor *pPD, const PROPVARIANT varStart){
+HRESULT     FlvSource::SelectStreams(IMFPresentationDescriptor *pPD, const PROPVARIANT *varStart){
   HRESULT hr = S_OK;
   BOOL    fWasSelected = FALSE;
 
@@ -1096,17 +1005,24 @@ done:
   return hr;
 }
 
+HRESULT FlvSource::AsyncStop(){
+  return AsyncDo(MFAsyncCallback::New([this](IMFAsyncResult*result)->HRESULT{
+    auto hr = this->DoStop();
+    result->SetStatus(hr);
+    return S_OK;
+  }), this);
+}
 //-------------------------------------------------------------------
 // DoStop
 // Perform an async stop operation (IMFMediaSource::Stop)
 //-------------------------------------------------------------------
 
-HRESULT FlvSource::DoStop(SourceOp *pOp)
+HRESULT FlvSource::DoStop()
 {
     HRESULT hr = S_OK;
     QWORD qwCurrentPosition = 0;
 
-    hr = BeginAsyncOp(pOp);
+    hr = BeginAsyncOp();
 
     // Stop the active streams.
 
@@ -1136,22 +1052,29 @@ HRESULT FlvSource::DoStop(SourceOp *pOp)
     // Send the "stopped" event. This might include a failure code.
     (void)m_pEventQueue->QueueEventParamVar(MESourceStopped, GUID_NULL, hr, NULL);
 
-    CompleteAsyncOp(pOp);
+    CompleteAsyncOp();
 
     return hr;
 }
 
+HRESULT FlvSource::AsyncPause(){
+  return AsyncDo(MFAsyncCallback::New([this](IMFAsyncResult*result)->HRESULT{
+    auto hr = this->DoPause();
+    result->SetStatus(hr);
+    return S_OK;
+  }), this);
+}
 
 //-------------------------------------------------------------------
 // DoPause
 // Perform an async pause operation (IMFMediaSource::Pause)
 //-------------------------------------------------------------------
 
-HRESULT FlvSource::DoPause(SourceOp *pOp)
+HRESULT FlvSource::DoPause()
 {
     HRESULT hr = S_OK;
 
-    hr = BeginAsyncOp(pOp);
+    hr = BeginAsyncOp();
 
     // Pause is only allowed while running.
     if (SUCCEEDED(hr))
@@ -1173,12 +1096,18 @@ HRESULT FlvSource::DoPause(SourceOp *pOp)
     // Send the "paused" event. This might include a failure code.
     (void)m_pEventQueue->QueueEventParamVar(MESourcePaused, GUID_NULL, hr, NULL);
 
-    CompleteAsyncOp(pOp);
+    CompleteAsyncOp();
 
     return hr;
 }
 
-
+HRESULT FlvSource::AsyncRequestData(){
+  return AsyncDo(MFAsyncCallback::New([this](IMFAsyncResult*result)->HRESULT{
+    auto hr = this->DoRequestData();
+    result->SetStatus(hr);
+    return S_OK;
+  }), this);
+}
 //-------------------------------------------------------------------
 // StreamRequestSample
 // Called by streams when they need more data.
@@ -1187,11 +1116,11 @@ HRESULT FlvSource::DoPause(SourceOp *pOp)
 // by queueing an OP_REQUEST_DATA operation.
 //-------------------------------------------------------------------
 
-HRESULT FlvSource::OnStreamRequestSample(SourceOp *pOp)
+HRESULT FlvSource::DoRequestData()
 {
-    BeginAsyncOp(pOp);
+    BeginAsyncOp();
     DemuxSample();
-    HRESULT hr = CompleteAsyncOp(pOp);
+    HRESULT hr = CompleteAsyncOp();
     return hr;
 }
 
@@ -1478,6 +1407,14 @@ bool FlvSource::NeedDemux() {
     return true;
   return false;
 }
+
+HRESULT FlvSource::AsyncEndOfStream(){
+  return AsyncDo(MFAsyncCallback::New([this](IMFAsyncResult*result)->HRESULT{
+    auto hr = this->DoEndOfStream();
+    result->SetStatus(hr);
+    return S_OK;
+  }), this);
+}
 //-------------------------------------------------------------------
 // OnEndOfStream
 // Called by each stream when it sends the last sample in the stream.
@@ -1491,11 +1428,11 @@ bool FlvSource::NeedDemux() {
 // "end-of-presentation" event.
 //-------------------------------------------------------------------
 
-HRESULT FlvSource::OnEndOfStream(SourceOp *pOp)
+HRESULT FlvSource::DoEndOfStream()
 {
     HRESULT hr = S_OK;
 
-    hr = BeginAsyncOp(pOp);
+    hr = BeginAsyncOp();
 
     // Decrement the count of end-of-stream notifications.
     if (SUCCEEDED(hr))
@@ -1511,7 +1448,7 @@ HRESULT FlvSource::OnEndOfStream(SourceOp *pOp)
 
     if (SUCCEEDED(hr))
     {
-        hr = CompleteAsyncOp(pOp);
+        hr = CompleteAsyncOp();
     }
 
     return hr;
@@ -1628,133 +1565,6 @@ void FlvSource::StreamingError(HRESULT hr)
 }
 
 
-
-/* SourceOp class */
-
-
-//-------------------------------------------------------------------
-// CreateOp
-// Static method to create a SourceOp instance.
-//
-// op: Specifies the async operation.
-// ppOp: Receives a pointer to the SourceOp object.
-//-------------------------------------------------------------------
-
-HRESULT SourceOp::CreateOp(SourceOp::Operation op, SourceOp **ppOp)
-{
-    if (ppOp == NULL)
-    {
-        return E_POINTER;
-    }
-
-    SourceOp *pOp = new (std::nothrow) SourceOp(op);
-    if (pOp  == NULL)
-    {
-        return E_OUTOFMEMORY;
-    }
-    *ppOp = pOp;
-
-    return S_OK;
-}
-
-//-------------------------------------------------------------------
-// CreateStartOp:
-// Static method to create a SourceOp instance for the Start()
-// operation.
-//
-// pPD: Presentation descriptor from the caller.
-// ppOp: Receives a pointer to the SourceOp object.
-//-------------------------------------------------------------------
-
-HRESULT SourceOp::CreateStartOp(IMFPresentationDescriptor *pPD, SourceOp **ppOp)
-{
-    if (ppOp == NULL)
-    {
-        return E_POINTER;
-    }
-
-    SourceOp *pOp = new (std::nothrow) StartOp(pPD);
-    if (pOp == NULL)
-    {
-        return E_OUTOFMEMORY;
-    }
-
-    *ppOp = pOp;
-    return S_OK;
-}
-
-
-ULONG SourceOp::AddRef()
-{
-    return InterlockedIncrement(&m_cRef);
-}
-
-ULONG SourceOp::Release()
-{
-    LONG cRef = InterlockedDecrement(&m_cRef);
-    if (cRef == 0)
-    {
-        delete this;
-    }
-    return cRef;
-}
-
-HRESULT SourceOp::QueryInterface(REFIID riid, void** ppv)
-{
-    static const QITAB qit[] =
-    {
-        QITABENT(SourceOp, IUnknown),
-        { 0 }
-    };
-    return QISearch(this, qit, riid, ppv);
-}
-
-SourceOp::SourceOp(Operation op) : m_cRef(1), m_op(op)
-{
-    PropVariantInit(&m_data);
-}
-
-SourceOp::~SourceOp()
-{
-    PropVariantClear(&m_data);
-}
-
-HRESULT SourceOp::SetData(const PROPVARIANT& var)
-{
-    return PropVariantCopy(&m_data, &var);
-}
-
-
-StartOp::StartOp(IMFPresentationDescriptor *pPD) : SourceOp(SourceOp::OP_START), m_pPD(pPD)
-{
-    if (m_pPD)
-    {
-        m_pPD->AddRef();
-    }
-}
-
-StartOp::~StartOp()
-{
-    SafeRelease(&m_pPD);
-}
-
-
-HRESULT StartOp::GetPresentationDescriptor(IMFPresentationDescriptor **ppPD)
-{
-    if (ppPD == NULL)
-    {
-        return E_POINTER;
-    }
-    if (m_pPD == NULL)
-    {
-        return MF_E_INVALIDREQUEST;
-    }
-    *ppPD = m_pPD;
-    (*ppPD)->AddRef();
-    return S_OK;
-}
-
-
 /*  Static functions */
 
 
@@ -1809,7 +1619,7 @@ HRESULT CreateVideoMediaType(const flv_file_header& header, IMFMediaType **ppTyp
 HRESULT CreateAudioMediaType(const flv_file_header& header, IMFMediaType **ppType)
 {    
   auto cid = header.audiocodecid;
-  if (cid != flv::audio_codec::aac || cid != flv::audio_codec::mp3 || cid != flv::audio_codec::mp38k){
+  if (cid != flv::audio_codec::aac && cid != flv::audio_codec::mp3 && cid != flv::audio_codec::mp38k){
     *ppType = nullptr;
     return MF_E_UNSUPPORTED_FORMAT; 
   }
@@ -1855,20 +1665,9 @@ HRESULT GetStreamMajorType(IMFStreamDescriptor *pSD, GUID *pguidMajorType)
 }
 
 
-BOOL SampleRequestMatch(SourceOp *pOp1, SourceOp *pOp2)
-{
-    if ((pOp1 == NULL) && (pOp2 == NULL))
-    {
-        return TRUE;
-    }
-    else if ((pOp1 == NULL) || (pOp2 == NULL))
-    {
-        return FALSE;
-    }
-    else
-    {
-        return (pOp1->Data().ulVal == pOp2->Data().ulVal);
-    }
+HRESULT FlvSource::AsyncDo(IMFAsyncCallback* invoke, IUnknown* state){
+  auto hr = MFPutWorkItem( MFASYNC_CALLBACK_QUEUE_STANDARD,  invoke,  state);
+  return hr;
 }
 
 HRESULT NewMFMediaBuffer(const uint8_t*data, uint32_t length, IMFMediaBuffer **rtn){
@@ -1916,3 +1715,13 @@ HRESULT NewNaluBuffer(uint8_t nallength, packet const&nalu, IMFMediaBuffer **rtn
   return hr;
 }
 #pragma warning( pop )
+
+_prop_variant_t::~_prop_variant_t(){
+  PropVariantClear(this);
+}
+_prop_variant_t::_prop_variant_t(PROPVARIANT const*p){
+  PropVariantCopy(this, p);
+}
+_prop_variant_t::_prop_variant_t(_prop_variant_t const&rhs){
+  PropVariantCopy(this, &rhs);
+}
