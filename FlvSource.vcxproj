@@ -192,13 +192,12 @@
     <ClInclude Include="flv.hpp" />
     <ClInclude Include="flv_meta.hpp" />
     <ClInclude Include="keyframe.hpp" />
-    <ClInclude Include="linklist.h" />
+    <ClInclude Include="InterfaceList.hpp" />
     <ClInclude Include="FlvByteStreamHandler.h" />
     <ClInclude Include="FlvSource.h" />
     <ClInclude Include="FlvStream.h" />
     <ClInclude Include="MFAsyncCallback.hpp" />
     <ClInclude Include="MFState.hpp" />
-    <ClInclude Include="OpQueue.h" />
     <ClInclude Include="FlvParse.hpp" />
     <ClInclude Include="packet.hpp" />
     <ClInclude Include="flv_raw_header.hpp" />
