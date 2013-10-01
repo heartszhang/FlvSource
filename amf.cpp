@@ -50,36 +50,36 @@ int32_t flv::amf_reader::skip_script_data_value(){
 
 // only accept fields filepositions and times
 // other fields would be ignored
-keyframes flv::amf_reader::decode_keyframes(int32_t*ret){
+keyframes flv::keyframes_decoder::decode(flv::amf_reader &reader, int32_t*ret){
   keyframes va;
   *ret = 0;
   
-  auto t = byte(); // object
+  auto t = reader.byte(); // object
   assert(t == (uint8_t)flv::script_data_value_type::object);
   for (bool neop = true; neop && *ret == 0;){
-    auto v = script_data_string();
+    auto v = reader.script_data_string();
     if (v == "filepositions"){
-      byte();  // strict array type = 10
-      auto cnt = ui32();
+      reader.byte();  // strict array type = 10
+      auto cnt = reader.ui32();
       for (uint32_t i = 0; i < cnt; ++i){
-        va.push_fileposition(script_data_value_toui64());
+        va.push_fileposition(reader.script_data_value_toui64());
       }
     }
     else if (v == "times"){
-      byte();
-      auto cnt = ui32();
+      reader.byte();
+      auto cnt = reader.ui32();
       for (uint32_t i = 0; i < cnt; ++i){
-        va.push_time(script_data_value_tod());
+        va.push_time(reader.script_data_value_tod());
       }
     }
     else if (v == ""){
-      *ret = skip_script_data_object_end(&neop);
+      *ret = reader.skip_script_data_object_end(&neop);
     }
     else{
-      *ret = skip_script_data_value();
+      *ret = reader.skip_script_data_value();
     }
   }
-  return va;
+  return std::move(va);
 }
 int32_t flv::amf_reader::skip_script_data_object(){
   int32_t hr = 0;
