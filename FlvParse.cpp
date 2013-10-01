@@ -182,7 +182,7 @@ HRESULT read_on_meta_data_value(flv::amf_reader&reader, flv_meta*v){
       v->datasize = reader.script_data_value_toui64();
     }
     else if (vname == "keyframes"){
-      v->keyframes = std::move(reader.decode_keyframes((int32_t*)&hr));
+      v->keyframes = std::move(flv::keyframes_decoder().decode(reader, (int32_t*)&hr));
     }
     else if (vname == "hasAudio"){
       v->has_audio = reader.script_data_value_toui8();
