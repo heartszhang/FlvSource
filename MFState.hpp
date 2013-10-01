@@ -1,11 +1,11 @@
-#pragma once
+﻿#pragma once
 #include "MFAsyncCallback.hpp"
 template<typename state_t>
 class MFState : public IUnknown {
   long refs;
 public:
   state_t state;
-  explicit MFState(state_t const&v) : state(v), refs(0){}
+  explicit MFState(state_t const&v) : state(v), refs(0){} // 引用计数初始化0，要求转换到ptr类型时，不要在进行release
   MFState() : refs(0){};
   // IUnknown
   STDMETHODIMP QueryInterface(REFIID riid, void** ppv)
