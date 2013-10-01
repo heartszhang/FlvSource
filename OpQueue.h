@@ -91,14 +91,14 @@ public:
 
 protected:
 
-    HRESULT ProcessQueue();
-    HRESULT ProcessQueueAsync(IMFAsyncResult *pResult);
+    HRESULT DispatchOperations();
+    HRESULT InvokeOp(IMFAsyncResult *pResult);
 
-    virtual HRESULT DispatchOperation(OP_TYPE *pOp) = 0;
+    virtual HRESULT DoOperation(OP_TYPE *pOp) = 0;
     virtual HRESULT ValidateOperation(OP_TYPE *pOp) = 0;
 
     OpQueue(CRITICAL_SECTION& critsec)
-        : m_OnProcessQueue(this, &OpQueue::ProcessQueueAsync),
+      : invoke_op(this, &OpQueue::InvokeOp),
           m_critsec(critsec)
     {
     }
@@ -110,7 +110,7 @@ protected:
 protected:
     OpList                  m_OpQueue;         // Queue of operations.
     CRITICAL_SECTION&       m_critsec;         // Protects the queue state.
-    AsyncCallback<OpQueue>  m_OnProcessQueue;  // ProcessQueueAsync callback.
+    AsyncCallback<OpQueue>  invoke_op;  // ProcessQueueAsync callback.
     OpQueue<OP_TYPE>&operator=(const OpQueue) = delete;
 };
 
@@ -129,12 +129,12 @@ HRESULT OpQueue<OP_TYPE>::QueueOperation(OP_TYPE *pOp)
     EnterCriticalSection(&m_critsec);
 
     hr = m_OpQueue.InsertBack(pOp);
+    LeaveCriticalSection(&m_critsec);
     if (SUCCEEDED(hr))
     {
-        hr = ProcessQueue();
+      hr = DispatchOperations();
     }
 
-    LeaveCriticalSection(&m_critsec);
     return hr;
 }
 
@@ -147,17 +147,20 @@ HRESULT OpQueue<OP_TYPE>::QueueOperation(OP_TYPE *pOp)
 //-------------------------------------------------------------------
 
 template <class OP_TYPE>
-HRESULT OpQueue<OP_TYPE>::ProcessQueue()
+HRESULT OpQueue<OP_TYPE>::DispatchOperations()
 {
     HRESULT hr = S_OK;
+    EnterCriticalSection(&m_critsec);
+
     if (m_OpQueue.GetCount() > 0)
     {
         hr = MFPutWorkItem(
-            MFASYNC_CALLBACK_QUEUE_STANDARD,    // Use the standard work queue.
-            &m_OnProcessQueue,                  // Callback method.
+            MFASYNC_CALLBACK_QUEUE_STANDARD,    // Use the standard work queue. 
+            &invoke_op,                  // Callback method.
             NULL                                // State object.
             );
     }
+    LeaveCriticalSection(&m_critsec);
     return hr;
 }
 
@@ -170,34 +173,29 @@ HRESULT OpQueue<OP_TYPE>::ProcessQueue()
 //-------------------------------------------------------------------
 
 template <class OP_TYPE>
-HRESULT OpQueue<OP_TYPE>::ProcessQueueAsync(IMFAsyncResult *pResult)
+HRESULT OpQueue<OP_TYPE>::InvokeOp(IMFAsyncResult *pResult)
 {
   pResult;
-    HRESULT hr = S_OK;
+    HRESULT hr = E_FAIL;
     OP_TYPE *pOp = NULL;
 
     EnterCriticalSection(&m_critsec);
 
     if (m_OpQueue.GetCount() > 0)
     {
-        hr = m_OpQueue.GetFront(&pOp);
-
-        if (SUCCEEDED(hr))
-        {
-            hr = ValidateOperation(pOp);
-        }
-        if (SUCCEEDED(hr))
-        {
-            hr = m_OpQueue.RemoveFront(NULL);
-        }
-        if (SUCCEEDED(hr))
-        {
-            (void)DispatchOperation(pOp);
-        }
+      hr = m_OpQueue.RemoveFront(&pOp);
+    }
+    LeaveCriticalSection(&m_critsec);
+    if (ok(hr))
+    {
+      hr = ValidateOperation(pOp);  // deaklock risk
+    }
+    if (ok(hr))
+    {
+      hr = DoOperation(pOp);
     }
 
     SafeRelease(&pOp);
-    LeaveCriticalSection(&m_critsec);
     return hr;
 }
 
