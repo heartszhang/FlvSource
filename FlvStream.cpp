@@ -146,7 +146,7 @@ HRESULT FlvStream::Activate(bool act)
 // varStart: Starting position.
 //-------------------------------------------------------------------
 
-HRESULT FlvStream::Start(const PROPVARIANT& varStart)
+HRESULT FlvStream::Start(const PROPVARIANT* varStart)
 {
     SourceLock lock(m_pSource);
 
@@ -157,7 +157,7 @@ HRESULT FlvStream::Start(const PROPVARIANT& varStart)
     // Queue the stream-started event.
     if (SUCCEEDED(hr))
     {
-        hr = QueueEvent(MEStreamStarted, GUID_NULL, S_OK, &varStart);
+        hr = QueueEvent(MEStreamStarted, GUID_NULL, S_OK, varStart);
     }
 
     if (SUCCEEDED(hr))
@@ -390,13 +390,15 @@ HRESULT FlvStream::DispatchSamples()
             MEEndOfStream, GUID_NULL, S_OK, NULL);
 
         // Notify the source. It will send the end-of-presentation event.
-        hr = m_pSource->QueueAsyncOperation(SourceOp::OP_END_OF_STREAM);
+        // hr = m_pSource->QueueAsyncOperation(SourceOp::OP_END_OF_STREAM);
+        hr = m_pSource->AsyncEndOfStream();
     }
     else if (NeedsData())
     {
         // The sample queue is empty; the request queue is not empty; and we
         // have not reached the end of the stream. Ask for more data.
-        hr = m_pSource->QueueAsyncOperation(SourceOp::OP_REQUEST_DATA);
+        //hr = m_pSource->QueueAsyncOperation(SourceOp::OP_REQUEST_DATA);
+      hr = m_pSource->AsyncRequestData();
     }
 
 done:
