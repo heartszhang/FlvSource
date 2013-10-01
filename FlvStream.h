@@ -46,14 +46,6 @@ private:
 
     // SourceLock class:
     // Small helper class to lock and unlock the source.
-    class SourceLock
-    {
-    private:
-        FlvSource *m_pSource;
-    public:
-        SourceLock(FlvSource *pSource);
-        ~SourceLock();
-    };
 
 private:
 
@@ -65,15 +57,15 @@ private:
 
 
 private:
-    long                m_cRef;                 // reference count
+    long                m_cRef = 1;                 // reference count, 标准的Interface实现
 
-    FlvSource         *m_pSource;             // Parent media source
+    FlvSource         *source;             // Parent media source
     IMFStreamDescriptorPtr stream_descriptor;
     IMFMediaEventQueuePtr  event_queue;         // Event generator helper
 
-    SourceState         m_state;                // Current state (running, stopped, paused)
-    bool                activated;              // Is the stream active?
-    bool                eos;                 // Did the source reach the end of the stream?
+    SourceState         m_state = STATE_STOPPED;        // Current state (running, stopped, paused)
+    bool                activated = false;              // Is the stream active?
+    bool                eos   = false;          // Did the source reach the end of the stream?
 
     SampleList          m_Samples;              // Samples waiting to be delivered.
     TokenList           m_Requests;             // Sample requests, waiting to be dispatched.
