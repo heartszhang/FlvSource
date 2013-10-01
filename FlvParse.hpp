@@ -124,7 +124,7 @@ typedef _com_ptr_t < _com_IIID<IMFSample, &__uuidof(IMFSample) >>               
 typedef _com_ptr_t < _com_IIID<IUnknown, &__uuidof(IUnknown) >>                                   IUnknownPtr;
 typedef _com_ptr_t < _com_IIID<IMFMediaBuffer, &__uuidof(IMFMediaBuffer) >>                       IMFMediaBufferPtr;
 typedef _com_ptr_t < _com_IIID<IMFAsyncResult, &__uuidof(IMFAsyncResult)>> IMFAsyncResultPtr;
-
+typedef _com_ptr_t < _com_IIID < IMFMediaSource, &__uuidof(IMFMediaSource)>> IMFMediaSourcePtr;
 struct flv_parser : public buffer{
   IMFByteStreamPtr        stream;
   HRESULT                     skip_previsou_tag_size();
