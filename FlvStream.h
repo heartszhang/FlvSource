@@ -28,7 +28,7 @@ public:
 
     // Other methods (called by source)
     HRESULT     Activate(bool act);
-    HRESULT     Start(const PROPVARIANT& varStart);
+    HRESULT     Start(const PROPVARIANT* varStart);
     HRESULT     Pause();
     HRESULT     Stop();
     HRESULT     EndOfStream();
