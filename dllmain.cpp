@@ -1,4 +1,4 @@
-//////////////////////////////////////////////////////////////////////////
+Ôªø//////////////////////////////////////////////////////////////////////////
 //
 // dllmain.cpp : Implements DLL exports and COM class factory
 //
@@ -9,7 +9,6 @@
 //       - DllGetClassObject
 //
 //////////////////////////////////////////////////////////////////////////
-
 #include "FlvSource.h"
 #include "FlvByteStreamHandler.h"
 
@@ -17,9 +16,9 @@
 #include <strsafe.h>
 
 #include <initguid.h>
-const DWORD CHARS_IN_GUID = 39;
 
-//◊¢≤·‘⁄HKCU,∂¯≤ª «HKLM
+const DWORD CHARS_IN_GUID = 39;
+//Ê≥®ÂÜåÂú®HKCU,ËÄå‰∏çÊòØHKLM
 HRESULT RegisterObject(
     HMODULE hModule,
     const GUID& guid,
@@ -204,7 +203,6 @@ STDAPI DllGetClassObject(REFCLSID clsid, REFIID riid, void **ppv)
 {
     return CClassFactory::CreateInstance(clsid, c_rgClassObjectInit, ARRAYSIZE(c_rgClassObjectInit), riid, ppv);
 }
-
 
 STDAPI DllRegisterServer()
 {
