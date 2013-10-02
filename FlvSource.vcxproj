@@ -191,7 +191,7 @@
     <ClInclude Include="buffer.hpp" />
     <ClInclude Include="flv.hpp" />
     <ClInclude Include="flv_meta.hpp" />
-    <ClInclude Include="keyframe.hpp" />
+    <ClInclude Include="keyframes.hpp" />
     <ClInclude Include="InterfaceList.hpp" />
     <ClInclude Include="FlvByteStreamHandler.h" />
     <ClInclude Include="FlvSource.h" />

@@ -3,7 +3,9 @@
 #include <string>
 #include <cstdint>
 #include "bigendian.hpp"
-#include "keyframe.hpp"
+#include "keyframes.hpp"
+#include "flv_meta.hpp"
+
 namespace flv{
   struct amf_reader : public bigendian::binary_reader{
     int32_t skip_script_data_string();
@@ -27,5 +29,8 @@ namespace flv{
   };
   struct keyframes_decoder{
     ::keyframes decode(amf_reader&reader, int32_t*ret);
+  };
+  struct on_meta_data_decoder{
+    uint32_t decode(amf_reader&reader, flv_meta*v);
   };
 }

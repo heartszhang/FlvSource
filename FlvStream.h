@@ -43,9 +43,7 @@ public:
  //   HRESULT     OnDispatchSamples(IMFAsyncResult *pResult);
 
 private:
-
-    // SourceLock class:
-    // Small helper class to lock and unlock the source.
+  HRESULT CheckAcceptRequestSample()const;
 
 private:
 

@@ -219,6 +219,7 @@ private:
       uint32_t on_meta_data_ready                     : 1;
       uint32_t processing_op                          : 1;
       uint32_t code_private_data_sent                 : 1;
+      uint32_t pending_seek : 1;
     }status;
 
     flv_parser                      parser;
@@ -232,7 +233,7 @@ private:
 
     DWORD                       m_cPendingEOS;              // Pending EOS notifications.
     ULONG                       m_cRestartCounter;          // Counter for sample requests.
-
+    uint64_t                    pending_seek_file_position = 0;
 
     // Async callback helper.
     AsyncCallback<FlvSource> on_flv_header;

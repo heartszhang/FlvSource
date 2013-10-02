@@ -26,27 +26,12 @@ public:
 HRESULT FlvStream::RequestSample(IUnknown* pToken)
 {
     HRESULT hr = S_OK;
-//    IMFMediaSource *pSource = NULL;
-
     // Hold the media source object's critical section.
     SourceLock lock(source);
 
-    hr = CheckShutdown();
+    hr = CheckAcceptRequestSample();
     if (FAILED(hr))
     {
-        goto done;
-    }
-
-    if (m_state == STATE_STOPPED)
-    {
-        hr = MF_E_INVALIDREQUEST;
-        goto done;
-    }
-
-    if (!IsActive())
-    {
-        // If the stream is not active, it should not get sample requests.
-        hr = MF_E_INVALIDREQUEST;
         goto done;
     }
 
@@ -62,11 +47,6 @@ HRESULT FlvStream::RequestSample(IUnknown* pToken)
 
     // Dispatch the request.
     hr = DispatchSamples();
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
 done:
     if (FAILED(hr) && (m_state != STATE_SHUTDOWN))
     {
@@ -75,6 +55,11 @@ done:
       hr = source->QueueEvent(MEError, GUID_NULL, hr, NULL);
     }
     return hr;
+}
+
+//selected, not shutdown and not stopped
+HRESULT FlvStream::CheckAcceptRequestSample()const{
+  return (m_state != STATE_SHUTDOWN && m_state != STATE_STOPPED && IsActive()) ? S_OK : MF_E_INVALIDREQUEST;
 }
 
 FlvStream::FlvStream(FlvSource *pSource, IMFStreamDescriptor *pSD, HRESULT& hr) :
@@ -268,7 +253,7 @@ HRESULT FlvStream::Shutdown()
     return hr;
 }
 
-const DWORD SAMPLE_QUEUE = 2;               // How many samples does each stream try to hold in its queue?
+const DWORD SAMPLE_QUEUE = 4;               // How many samples does each stream try to hold in its queue?
 
 //-------------------------------------------------------------------
 // NeedsData
@@ -295,7 +280,6 @@ HRESULT FlvStream::DeliverPayload(IMFSample* pSample)
 {
   SourceLock lock(source);
 
-    // why not pSample->addref()
     // Queue the sample.
     m_Samples.push_back(pSample);
 
@@ -305,8 +289,6 @@ HRESULT FlvStream::DeliverPayload(IMFSample* pSample)
     return hr;
 }
 
-/* Private methods */
-
 //-------------------------------------------------------------------
 // DispatchSamples
 // Dispatches as many pending sample requests as possible.
@@ -315,8 +297,6 @@ HRESULT FlvStream::DeliverPayload(IMFSample* pSample)
 HRESULT FlvStream::DispatchSamples()
 {
     HRESULT hr = S_OK;
-//    BOOL bNeedData = FALSE;
-//    BOOL bEOS = FALSE;
 
     SourceLock lock(source);
 
@@ -326,35 +306,31 @@ HRESULT FlvStream::DispatchSamples()
     {
         return S_OK;
     }
-    IMFSample* pSample = NULL;
-    IUnknown*  pToken = NULL;
-
 
     // Deliver as many samples as we can.
     while (!m_Samples.empty() && !m_Requests.empty())
     {
-        // Pull the next sample from the queue.
-      pSample = m_Samples.pop_front();
+      IMFSamplePtr pSample = m_Samples.pop_front();
+      IUnknownPtr pToken = m_Requests.pop_front();
 
         // Pull the next request token from the queue. Tokens can be NULL.
-      pToken = m_Requests.pop_front();
-      assert(pSample);
-            // Set the token on the sample.
-      if(pToken)
+      assert(pSample); // token can be null
+
+      if (pToken)
         hr = pSample->SetUnknown(MFSampleExtension_Token, pToken);
       if (FAILED(hr))
       {
         goto done;
       }
 
-        // Send an MEMediaSample event with the sample.
-        hr = event_queue->QueueEventParamUnk(
-            MEMediaSample, GUID_NULL, S_OK, pSample);
+      // Send an MEMediaSample event with the sample.
+      hr = event_queue->QueueEventParamUnk(
+        MEMediaSample, GUID_NULL, S_OK, pSample);
 
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+      if (FAILED(hr))
+      {
+        goto done;
+      }
     }
 
     if (m_Samples.empty() && eos)
@@ -373,7 +349,6 @@ HRESULT FlvStream::DispatchSamples()
     {
         // The sample queue is empty; the request queue is not empty; and we
         // have not reached the end of the stream. Ask for more data.
-        //hr = m_pSource->QueueAsyncOperation(SourceOp::OP_REQUEST_DATA);
       hr = source->AsyncRequestData();
     }
 
@@ -385,8 +360,6 @@ done:
       source->QueueEvent(MEError, GUID_NULL, hr, NULL);
     }
 
-    SafeRelease(&pSample);
-    SafeRelease(&pToken);
     return S_OK;
 }
 
@@ -403,15 +376,13 @@ HRESULT FlvStream::GetMediaSource(IMFMediaSource** ppMediaSource)
   {
     return E_POINTER;
   }
-
+  *ppMediaSource = nullptr;
   if (source == NULL)
   {
     return E_UNEXPECTED;
   }
 
-  HRESULT hr = S_OK;
-
-  hr = CheckShutdown();
+  HRESULT hr = CheckShutdown();
 
   // QI the source for IMFMediaSource.
   // (Does not hold the source's critical section.)
@@ -436,7 +407,7 @@ HRESULT FlvStream::GetStreamDescriptor(IMFStreamDescriptor** ppStreamDescriptor)
   {
     return E_POINTER;
   }
-
+  *ppStreamDescriptor = nullptr;
   if (stream_descriptor == NULL)
   {
     return E_UNEXPECTED;
@@ -511,7 +482,7 @@ HRESULT FlvStream::GetEvent(DWORD dwFlags, IMFMediaEvent** ppEvent)
       pQueue = event_queue;
       pQueue->AddRef();
     }
-    }   // release lock
+  }   // release lock
 
   // Use the local pointer to call GetEvent.
   if (SUCCEEDED(hr))

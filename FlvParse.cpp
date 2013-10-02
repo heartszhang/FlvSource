@@ -130,100 +130,12 @@ HRESULT flv_parser::begin_avc_header(IMFAsyncCallback*cb, IUnknown*s){
 HRESULT flv_parser::end_avc_header(IMFAsyncResult*result, ::avc_header*v){
   return end_read<::avc_header>(result, v);
 }
-HRESULT read_on_meta_data_value(flv::amf_reader&reader, flv_meta*v){
-  auto must_be_ecma_array = reader.byte();
-  if (must_be_ecma_array != (uint8_t)flv::script_data_value_type::ecma)
-    return E_FAIL;
-  HRESULT hr = S_OK;
-  reader.ui32(); // ecma
-  for (bool object_not_end = true; object_not_end && ok(hr);){
-    auto vname = reader.script_data_string();
-    if (vname == "duration"){
-      v->duration = reader.script_data_value_toui64();
-    }
-    else if (vname == "width"){
-      v->width = reader.script_data_value_toui32();
-    }
-    else if (vname == "height"){
-      v->height = reader.script_data_value_toui32();
-    }
-    else if (vname == "videodatarate"){
-      v->videodatarate = uint32_t(reader.script_data_value_tod() * 1000);
-    }
-    else if (vname == "framerate"){
-      v->framerate = reader.script_data_value_toui32();
-    }
-    else if (vname == "videocodecid"){
-      v->videocodecid = flv::video_codec(reader.script_data_value_toui32());
-    }
-    else if (vname == "audiosamplerate"){
-      auto x = reader.script_data_value_toui32();
-      if (x < 4){
-        v->audiosamplerate = 44100 * (1 << x) / 8;
-      }
-      else v->audiosamplerate = x;
-    }
-    else if (vname == "audiosamplesize"){
-      v->audiosamplesize = (uint16_t)reader.script_data_value_toui32();
-    }
-    else if (vname == "audiodatarate"){
-      v->audiodatarate = reader.script_data_value_toui32();
-    }
-    else if (vname == "stereo"){
-      v->stereo = reader.script_data_value_toui8();
-    }
-    else if (vname == "audiocodecid"){
-      v->audiocodecid = flv::audio_codec(reader.script_data_value_toui32());
-    }
-    else if (vname == "filesize"){
-      v->filesize = reader.script_data_value_toui64();
-    }
-    else if (vname == "datasize"){
-      v->datasize = reader.script_data_value_toui64();
-    }
-    else if (vname == "keyframes"){
-      v->keyframes = std::move(flv::keyframes_decoder().decode(reader, (int32_t*)&hr));
-    }
-    else if (vname == "hasAudio"){
-      v->has_audio = reader.script_data_value_toui8();
-    }
-    else if (vname == "hasVideo"){
-      v->has_video = reader.script_data_value_toui8();
-    }
-    else if (vname == "hasMetadata"){
-      v->has_metadata = reader.script_data_value_toui8();
-    }
-    else if (vname == "canSeekToEnd"){
-      v->can_seek_to_end = reader.script_data_value_toui8();
-    }
-    else if (vname == "lasttimestamp"){
-      v->last_timestamp = reader.script_data_value_toui32();
-    }
-    else if (vname == "lastkeyframetimestamp"){
-      v->last_keyframe_timestamp= reader.script_data_value_toui32();
-    }
-    else if (vname == "audiosize"){
-      v->audiosize = reader.script_data_value_toui32();
-    }
-    else if (vname == "audiodelay"){
-      v->audiodelay= reader.script_data_value_toui32();
-    }
-    else if (vname == ""){
-      hr = reader.skip_script_data_value_end(&object_not_end);
-    } 
-    else{
-      hr = reader.skip_script_data_value();
-    }
-  }
-  assert(reader.pointer == reader.length);
-  return hr;
-}
 
 HRESULT flv_parser::on_meta_data(flv_meta*v) {
   auto reader = flv::amf_reader(DataPtr(), DataSize());
   auto hr = reader.skip_script_data_value();
   if (ok(hr))
-    hr = read_on_meta_data_value(reader,v);
+    hr = flv::on_meta_data_decoder().decode(reader, v);
   return hr;
 }
 HRESULT flv_parser::begin_on_meta_data(uint32_t meta_size, IMFAsyncCallback*cb, IUnknown*s){

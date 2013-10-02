@@ -888,11 +888,12 @@ HRESULT FlvSource::DoStart(IMFPresentationDescriptor*pd, PROPVARIANT const*start
   assert(ok(hr));  // overlapped operations arenot permitted
   hr = BeginAsyncOp();
 
-    // Because this sample does not support seeking, the start
-    // position must be 0 (from stopped) or "current position."
+  //startpos->vt == vt_empty) current pos
 
-    // If the sample supported seeking, we would need to get the
-    // start position from the PROPVARIANT data contained in pOp.
+  if (startpos->vt == VT_I8){
+    pending_seek_file_position = header.keyframes.seek(startpos->hVal.QuadPart) - sizeof(uint32_t);  // - previous_tag_size
+    status.pending_seek = 1;
+  }
 
     // Select/deselect streams, based on what the caller set in the PD.
     // This method also sends the MENewStream/MEUpdatedStream events.
@@ -1132,6 +1133,10 @@ HRESULT FlvSource::DoRequestData()
 void FlvSource::DemuxSample(){
   if (!NeedDemux())
     return;
+  if (status.pending_seek){
+    status.pending_seek = 0;
+    byte_stream->SetCurrentPosition(pending_seek_file_position);
+  }
   status.pending_request = 1;
   ReadSampleHeader();
 }
