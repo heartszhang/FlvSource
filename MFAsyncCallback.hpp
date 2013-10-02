@@ -1,40 +1,27 @@
 #pragma once
-#include <Shlwapi.h>    //QITABENT
-#include <mfapi.h>      //IMFAsyncCallback
-#include <comip.h>      //_com_ptr_t
-#include <functional>   // std::function
+#include <wrl\implements.h>
 
-typedef _com_ptr_t<_com_IIID<IMFAsyncCallback, &__uuidof(IMFAsyncCallback)> > IMFAsyncCallbackPtr;
+#include <mfapi.h>      //IMFAsyncCallback
+#include <functional>   // std::function
+using namespace Microsoft::WRL;
+
+// typedef _com_ptr_t<_com_IIID<IMFAsyncCallback, &__uuidof(IMFAsyncCallback)> > IMFAsyncCallbackPtr;
+typedef ComPtr<IMFAsyncCallback> IMFAsyncCallbackPtr;
+
 typedef std::function<HRESULT(IMFAsyncResult*)> invoke_t;
-class MFAsyncCallback : public IMFAsyncCallback {
-  long     refs;
+class MFAsyncCallback : public RuntimeClass<RuntimeClassFlags<ClassicCom>, IMFAsyncCallback> {
   invoke_t invoke;
-  explicit MFAsyncCallback(invoke_t const& fn) :invoke(fn), refs(0)  {
-  }
 
 public:
+  HRESULT RuntimeClassInitialize(invoke_t const& fn)   {
+    invoke = fn;
+    return S_OK;
+  }
   static IMFAsyncCallbackPtr New(invoke_t const&fn){
-    return IMFAsyncCallbackPtr(new MFAsyncCallback(fn));
-  }
-  // IUnknown
-  STDMETHODIMP QueryInterface(REFIID riid, void** ppv)  {
-    static const QITAB qit[] =
-    {
-      QITABENT(MFAsyncCallback, IMFAsyncCallback),
-      { 0 }
-    };
-    return QISearch(this, qit, riid, ppv);
-  }
-
-  STDMETHODIMP_(ULONG) AddRef() {
-    return InterlockedIncrement(&refs);
-  }
-
-  STDMETHODIMP_(ULONG) Release() {
-    auto r = InterlockedDecrement(&refs);
-    if (r <= 0)
-      delete this;
-    return r;
+    IMFAsyncCallbackPtr v;
+    auto hr = MakeAndInitialize<MFAsyncCallback>(&v, fn);
+    hr;
+    return v;
   }
 
   // IMFAsyncCallback methods

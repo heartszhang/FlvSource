@@ -1,8 +1,15 @@
 #include "FlvSource.h"
 #include <wmcodecdsp.h>
-#include "AsyncCallback.hpp"
 #include "MFState.hpp"
 #include "avcc.hpp"
+
+#pragma comment(lib, "mfplat")
+#pragma comment(lib, "mfuuid")      // Media Foundation GUIDs
+#pragma comment(lib, "strmiids")    // DirectShow GUIDs
+#pragma comment(lib, "Ws2_32")      // htonl, etc
+#pragma comment(lib, "shlwapi")
+#pragma comment(lib,"wmcodecdspuuid")
+
 #pragma warning( push )
 #pragma warning( disable : 4355 )  // 'this' used in base member initializer list
 
@@ -10,71 +17,8 @@
 HRESULT CreateVideoMediaType(const flv_file_header& , IMFMediaType **ppType);
 HRESULT CreateAudioMediaType(const flv_file_header& , IMFMediaType **ppType);
 HRESULT GetStreamMajorType(IMFStreamDescriptor *pSD, GUID *pguidMajorType);
-//BOOL    SampleRequestMatch(SourceOp *pOp1, SourceOp *pOp2);
 HRESULT NewMFMediaBuffer(const uint8_t*data, uint32_t length, IMFMediaBuffer **rtn);
 HRESULT NewNaluBuffer(uint8_t nallength, packet const&nalu, IMFMediaBuffer **rtn);
-
-//-------------------------------------------------------------------
-// Name: CreateInstance
-// Static method to create an instance of the source.
-//
-// ppSource:    Receives a ref-counted pointer to the source.
-//-------------------------------------------------------------------
-
-HRESULT FlvSource::CreateInstance(FlvSource **ppSource)
-{
-    if (ppSource == NULL)
-    {
-        return E_POINTER;
-    }
-
-    HRESULT hr = S_OK;
-    FlvSource *pSource = new (std::nothrow) FlvSource(hr);
-    if (pSource == NULL)
-    {
-        return E_OUTOFMEMORY;
-    }
-
-    if (SUCCEEDED(hr))
-    {
-        *ppSource = pSource;
-        (*ppSource)->AddRef();
-    }
-
-    SafeRelease(&pSource);
-    return hr;
-}
-
-
-//-------------------------------------------------------------------
-// IUnknown methods
-//-------------------------------------------------------------------
-
-HRESULT FlvSource::QueryInterface(REFIID riid, void** ppv)
-{
-    static const QITAB qit[] =
-    {
-        QITABENT(FlvSource, IMFMediaEventGenerator),
-        QITABENT(FlvSource, IMFMediaSource),
-        { 0 }
-    };
-    return QISearch(this, qit, riid, ppv);
-}
-
-ULONG FlvSource::AddRef()
-{
-    return InterlockedIncrement(&m_cRef);
-}
-
-ULONG FlvSource::Release()
-{
-    LONG cRef = InterlockedDecrement(&m_cRef);
-    if (cRef == 0)
-    {
-        delete this;
-    }
-    return cRef;
-}
 
 //-------------------------------------------------------------------
 // IMFMediaEventGenerator methods
@@ -293,11 +237,11 @@ HRESULT FlvSource::Shutdown()
     {
         // Shut down the stream objects.
       if (audio_stream){
-        auto as = static_cast<FlvStream*>(audio_stream.GetInterfacePtr());
+        auto as = static_cast<FlvStream*>(audio_stream.Get());
         as->Shutdown();
       }
       if (video_stream){
-        auto vs = static_cast<FlvStream*>(video_stream.GetInterfacePtr());
+        auto vs = static_cast<FlvStream*>(video_stream.Get());
         vs->Shutdown();
       }
         // Shut down the event queue.
@@ -310,12 +254,12 @@ HRESULT FlvSource::Shutdown()
 
         m_pEventQueue = nullptr;
         presentation_descriptor = nullptr;
-        SafeRelease(&m_pBeginOpenResult);
+        begin_open_caller_result = nullptr;
         byte_stream = nullptr;
         status.processing_op = 0;
 
         // Set the state.
-        m_state = STATE_SHUTDOWN;
+        m_state = SourceState::STATE_SHUTDOWN;
     }
 
     LeaveCriticalSection(&m_critSec);
@@ -374,7 +318,7 @@ HRESULT FlvSource::Start(
         // If the current state is STOPPED, then position 0 is valid.
         // Otherwise, the start position must be VT_EMPTY (current position).
 
-        if ((m_state != STATE_STOPPED) || (pvarStartPos->hVal.QuadPart != 0))
+      if ((m_state != SourceState::STATE_STOPPED) || (pvarStartPos->hVal.QuadPart != 0))
         {
             hr = MF_E_INVALIDREQUEST;
             goto done;
@@ -413,10 +357,10 @@ HRESULT FlvSource::AsyncStart(IMFPresentationDescriptor* pd, PROPVARIANT const*s
   IMFPresentationDescriptorPtr spd(pd);
   _prop_variant_t spos = startpos;
   return AsyncDo(MFAsyncCallback::New([spd, spos, this](IMFAsyncResult*result)->HRESULT{
-    auto hr = this->DoStart(spd, &spos);
+    auto hr = this->DoStart(spd.Get(), &spos);
     result->SetStatus(hr);
     return S_OK;
-  }), this);  // state add this's ref
+  }).Get(), this->AsIUnknown().Get());  // state add this's ref
 }
 
 //-------------------------------------------------------------------
@@ -481,7 +425,7 @@ HRESULT FlvSource::BeginOpen(IMFByteStream *pStream, IMFAsyncCallback *pCB, IUnk
         return E_POINTER;
     }
 
-    if (m_state != STATE_INVALID)
+    if (m_state != SourceState::STATE_INVALID)
     {
         return MF_E_INVALIDREQUEST;
     }
@@ -513,7 +457,7 @@ HRESULT FlvSource::BeginOpen(IMFByteStream *pStream, IMFAsyncCallback *pCB, IUnk
     // Create an async result object. We'll use it later to invoke the callback.
     if (SUCCEEDED(hr))
     {
-        hr = MFCreateAsyncResult(NULL, pCB, pState, &m_pBeginOpenResult);
+      hr = MFCreateAsyncResult(NULL, pCB, pState, &begin_open_caller_result);
     }
 
     // Start reading data from the stream.
@@ -525,7 +469,7 @@ HRESULT FlvSource::BeginOpen(IMFByteStream *pStream, IMFAsyncCallback *pCB, IUnk
     // At this point, we now guarantee to invoke the callback.
     if (SUCCEEDED(hr))
     {
-        m_state = STATE_OPENING;
+      m_state = SourceState::STATE_OPENING;
     }
 
     LeaveCriticalSection(&m_critSec);
@@ -638,14 +582,7 @@ HRESULT FlvSource::EndOpen(IMFAsyncResult *pResult)
 
 /* Private methods */
 
-FlvSource::FlvSource(HRESULT& hr) :
-    m_cRef(1),
-    m_pEventQueue(NULL),
-    presentation_descriptor(NULL),
-    m_pBeginOpenResult(NULL),
-    byte_stream(NULL),
-    m_state(STATE_INVALID),
-    m_cRestartCounter(0),
+FlvSource::FlvSource() :
     on_flv_header(this, &FlvSource::OnFlvHeader),
     on_tag_header(this, &FlvSource::OnFlvTagHeader),
     on_meta_data(this, &FlvSource::OnMetaData),
@@ -658,24 +595,21 @@ FlvSource::FlvSource(HRESULT& hr) :
     on_video_header(this, &FlvSource::OnVideoHeader)
 {
   ZeroMemory(&status, sizeof(status));
-    DllAddRef();
 
-    InitializeCriticalSection(&m_critSec);
-
-    // Create the media event queue.
-    hr = MFCreateEventQueue(&m_pEventQueue);
+  InitializeCriticalSection(&m_critSec);
 }
-
+HRESULT FlvSource::RuntimeClassInitialize(){
+  return MFCreateEventQueue(&m_pEventQueue);
+}
 FlvSource::~FlvSource()
 {
-    if (m_state != STATE_SHUTDOWN)
+  if (m_state != SourceState::STATE_SHUTDOWN)
     {
         Shutdown();
     }
 
     DeleteCriticalSection(&m_critSec);
 
-    DllRelease();
 }
 
 
@@ -691,16 +625,16 @@ HRESULT FlvSource::CompleteOpen(HRESULT hrStatus)
 {
     HRESULT hr = S_OK;
 
-    if (m_pBeginOpenResult)
+    if (begin_open_caller_result)
     {
-        hr = m_pBeginOpenResult->SetStatus(hrStatus);
+      hr = begin_open_caller_result->SetStatus(hrStatus);
         if (SUCCEEDED(hr))
         {
-            hr = MFInvokeCallback(m_pBeginOpenResult);
+          hr = MFInvokeCallback(begin_open_caller_result.Get());
         }
     }
 
-    SafeRelease(&m_pBeginOpenResult);
+    begin_open_caller_result = nullptr;
     return hr;
 }
 
@@ -713,7 +647,7 @@ HRESULT FlvSource::CompleteOpen(HRESULT hrStatus)
 
 HRESULT FlvSource::IsInitialized() const
 {
-    if (m_state == STATE_OPENING || m_state == STATE_INVALID)
+  if (m_state == SourceState::STATE_OPENING || m_state == SourceState::STATE_INVALID)
     {
         return MF_E_NOT_INITIALIZED;
     }
@@ -723,6 +657,12 @@ HRESULT FlvSource::IsInitialized() const
     }
 }
 
+template<typename I>
+void release(I**i){
+  if (*i)
+    (*i)->Release();
+  *i = nullptr;
+}
 //-------------------------------------------------------------------
 // InitPresentationDescriptor
 //
@@ -742,7 +682,7 @@ HRESULT FlvSource::InitPresentationDescriptor()
     HRESULT hr = S_OK;
 
     assert(!presentation_descriptor);
-    assert(m_state == STATE_OPENING);
+    assert(m_state == SourceState::STATE_OPENING);
     DWORD cStreams = 0;
     if (video_stream)
       ++cStreams;
@@ -777,7 +717,7 @@ HRESULT FlvSource::InitPresentationDescriptor()
     }
 
     // Switch state from "opening" to stopped.
-    m_state = STATE_STOPPED;
+    m_state = SourceState::STATE_STOPPED;
 
     // Invoke the async callback to complete the BeginOpen operation.
     hr = CompleteOpen(S_OK);
@@ -788,7 +728,7 @@ done:
     {
         for (DWORD i = 0; i < cStreams; i++)
         {
-            SafeRelease(&ppSD[i]);
+          release(&ppSD[i]);
         }
         delete [] ppSD;
     }
@@ -901,7 +841,7 @@ HRESULT FlvSource::DoStart(IMFPresentationDescriptor*pd, PROPVARIANT const*start
 
     if (SUCCEEDED(hr))
     {
-        m_state = STATE_STARTED;
+      m_state = SourceState::STATE_STARTED;
 
         // Queue the "started" event. The event data is the start position.
         hr = m_pEventQueue->QueueEventParamVar(
@@ -971,7 +911,7 @@ HRESULT     FlvSource::SelectStreams(IMFPresentationDescriptor *pPD, const PROPV
       hr = E_INVALIDARG;
       goto done;
     }
-    FlvStream* flv_stream = static_cast<FlvStream*>(stream.GetInterfacePtr());
+    FlvStream* flv_stream = static_cast<FlvStream*>(stream.Get());
     // Was the stream active already?
     fWasSelected = flv_stream->IsActive();
 
@@ -989,8 +929,7 @@ HRESULT     FlvSource::SelectStreams(IMFPresentationDescriptor *pPD, const PROPV
       // If the stream was previously selected, send an "updated stream"
       // event. Otherwise, send a "new stream" event.
       MediaEventType met = fWasSelected ? MEUpdatedStream : MENewStream;
-
-      hr = m_pEventQueue->QueueEventParamUnk(met, GUID_NULL, hr, stream);
+      hr = m_pEventQueue->QueueEventParamUnk(met, GUID_NULL, hr, stream.Get());
       if (FAILED(hr))
       {
         goto done;
@@ -1016,7 +955,7 @@ HRESULT FlvSource::AsyncStop(){
     auto hr = this->DoStop();
     result->SetStatus(hr);
     return S_OK;
-  }), this);
+  }).Get(), this->AsIUnknown().Get());
 }
 //-------------------------------------------------------------------
 // DoStop
@@ -1051,9 +990,8 @@ HRESULT FlvSource::DoStop()
         ++m_cRestartCounter; // This counter is allowed to overflow.
     }
 
-//    SafeRelease(&m_pSampleRequest);
-    status.pending_request = 1;
-    m_state = STATE_STOPPED;
+//    status.pending_request = 1;
+    m_state = SourceState::STATE_STOPPED;
 
     // Send the "stopped" event. This might include a failure code.
     (void)m_pEventQueue->QueueEventParamVar(MESourceStopped, GUID_NULL, hr, NULL);
@@ -1068,7 +1006,7 @@ HRESULT FlvSource::AsyncPause(){
     auto hr = this->DoPause();
     result->SetStatus(hr);
     return S_OK;
-  }), this);
+  }).Get(), this->AsIUnknown().Get());
 }
 
 //-------------------------------------------------------------------
@@ -1085,7 +1023,7 @@ HRESULT FlvSource::DoPause()
     // Pause is only allowed while running.
     if (SUCCEEDED(hr))
     {
-        if (m_state != STATE_STARTED)
+      if (m_state != SourceState::STATE_STARTED)
         {
             hr = MF_E_INVALID_STATE_TRANSITION;
         }
@@ -1096,7 +1034,7 @@ HRESULT FlvSource::DoPause()
     {
     }
 
-    m_state = STATE_PAUSED;
+    m_state = SourceState::STATE_PAUSED;
 
 
     // Send the "paused" event. This might include a failure code.
@@ -1112,7 +1050,7 @@ HRESULT FlvSource::AsyncRequestData(){
     auto hr = this->DoRequestData();
     result->SetStatus(hr);
     return S_OK;
-  }), this);
+  }).Get(), this->AsIUnknown().Get());
 }
 //-------------------------------------------------------------------
 // StreamRequestSample
@@ -1169,7 +1107,7 @@ HRESULT FlvSource::OnSampleHeader(IMFAsyncResult *result){
 }
 
 HRESULT FlvSource::ReadVideoHeader(tag_header const&h){
-  auto hr = parser.begin_video_header(&on_video_header, NewMFState(h));
+  auto hr = parser.begin_video_header(&on_video_header, NewMFState(h).Get());
   if (fail(hr))
     Shutdown();
   return hr;
@@ -1194,7 +1132,7 @@ HRESULT FlvSource::OnVideoHeader(IMFAsyncResult*result){
 }
 
 HRESULT FlvSource::ReadAudioHeader(tag_header const&h){
-  auto hr = parser.begin_audio_header(&on_audio_header, NewMFState(h));
+  auto hr = parser.begin_audio_header(&on_audio_header, NewMFState(h).Get());
   if (fail(hr))
     Shutdown();
   return hr;
@@ -1219,7 +1157,7 @@ HRESULT FlvSource::OnAudioHeader(IMFAsyncResult* result){
 }
 
 HRESULT FlvSource::ReadAacPacketType(audio_packet_header const&ash){
-  auto hr = parser.begin_aac_packet_type(&on_aac_packet_type, NewMFState(ash));
+  auto hr = parser.begin_aac_packet_type(&on_aac_packet_type, NewMFState(ash).Get());
   if (fail(hr))
     Shutdown();
   return hr;
@@ -1238,7 +1176,7 @@ HRESULT FlvSource::OnAacPacketType(IMFAsyncResult*result){
 }
 
 HRESULT FlvSource::ReadAvcPacketType(video_packet_header const&vsh){
-  auto hr = parser.begin_avc_header(&on_avc_packet_type, NewMFState(vsh));
+  auto hr = parser.begin_avc_header(&on_avc_packet_type, NewMFState(vsh).Get());
   if (fail(hr))
     Shutdown();
   return hr;
@@ -1259,7 +1197,7 @@ HRESULT FlvSource::OnAvcPacketType(IMFAsyncResult*result){
   return hr;
 }
 HRESULT FlvSource::ReadAudioData(audio_packet_header const& ash){
-  auto hr = parser.begin_audio_data(ash.payload_length(), &on_audio_data, NewMFState<audio_packet_header>(ash));
+  auto hr = parser.begin_audio_data(ash.payload_length(), &on_audio_data, NewMFState<audio_packet_header>(ash).Get());
   if (fail(hr))
     Shutdown();
   return hr;
@@ -1271,11 +1209,11 @@ HRESULT FlvSource::DeliverAudioPacket(audio_packet_header const&ash){
   IMFSamplePtr sample;
   if (ok(hr))
     hr = MFCreateSample(&sample);
-  if(ok(hr)) hr = sample->AddBuffer(mbuf);
+  if(ok(hr)) hr = sample->AddBuffer(mbuf.Get());
   if (ok(hr)) hr = sample->SetSampleTime(ash.nano_timestamp);
   if (ok(hr)){
-    auto astream = static_cast<FlvStream*>(audio_stream.GetInterfacePtr());
-    hr = astream->DeliverPayload(sample);
+    auto astream = static_cast<FlvStream*>(audio_stream.Get());
+    hr = astream->DeliverPayload(sample.Get());
   }
   status.pending_request = 0;
   DemuxSample();
@@ -1310,7 +1248,7 @@ HRESULT FlvSource::CheckFirstPacketsReady(){
   return hr;
 }
 HRESULT FlvSource::ReadVideoData(video_packet_header const& vsh){
-  auto hr = parser.begin_video_data(vsh.payload_length(), &on_video_data, NewMFState<video_packet_header>(vsh));
+  auto hr = parser.begin_video_data(vsh.payload_length(), &on_video_data, NewMFState<video_packet_header>(vsh).Get());
   if (fail(hr))
     Shutdown();
   return hr;
@@ -1324,7 +1262,7 @@ HRESULT FlvSource::DeliverAvcPacket(video_packet_header const&vsh){
     auto cpd = header.avcc.code_private_data();
     hr = NewMFMediaBuffer(cpd._, cpd.length, &cpdbuf);
     if (ok(hr))
-      hr = sample->AddBuffer(cpdbuf);
+      hr = sample->AddBuffer(cpdbuf.Get());
   }
 
   if (vsh.avc_packet_type == flv::avc_packet_type::avc_nalu){
@@ -1333,7 +1271,7 @@ HRESULT FlvSource::DeliverAvcPacket(video_packet_header const&vsh){
     for (auto nalu = reader.nalu(); nalu.length; nalu = reader.nalu()){
       IMFMediaBufferPtr mbuf;
       hr = NewNaluBuffer(nal, nalu, &mbuf);//MFCreateMemoryBuffer(vsh.payload.length, &mbuf);
-      if (ok(hr)) hr = sample->AddBuffer(mbuf);
+      if (ok(hr)) hr = sample->AddBuffer(mbuf.Get());
     }
     assert(reader.pointer == reader.length);
   }
@@ -1343,8 +1281,8 @@ HRESULT FlvSource::DeliverAvcPacket(video_packet_header const&vsh){
   // should set sample duration
 
   if (ok(hr)){
-    auto astream = static_cast<FlvStream*>(video_stream.GetInterfacePtr());
-    hr = astream->DeliverPayload(sample);
+    auto astream = static_cast<FlvStream*>(video_stream.Get());
+    hr = astream->DeliverPayload(sample.Get());
   }
   status.pending_request = 0;
   DemuxSample();
@@ -1355,15 +1293,15 @@ HRESULT FlvSource::DeliverNAvcPacket(video_packet_header const&vsh){
   auto  hr = MFCreateSample(&sample);
   IMFMediaBufferPtr mbuf;
   hr = NewMFMediaBuffer(vsh.payload._, vsh.payload.length, &mbuf);
-  if (ok(hr)) hr = sample->AddBuffer(mbuf);
+  if (ok(hr)) hr = sample->AddBuffer(mbuf.Get());
 
   if (ok(hr)) hr = sample->SetSampleTime(vsh.nano_timestamp);
   if (ok(hr)) hr = sample->SetUINT32(MFSampleExtension_CleanPoint, vsh.frame_type == flv::frame_type::key_frame ? 1 : 0);
   // should set sample duration
 
   if (ok(hr)){
-    auto astream = static_cast<FlvStream*>(video_stream.GetInterfacePtr());
-    hr = astream->DeliverPayload(sample);
+    auto astream = static_cast<FlvStream*>(video_stream.Get());
+    hr = astream->DeliverPayload(sample.Get());
   }
   status.pending_request = 0;
   DemuxSample();
@@ -1395,8 +1333,8 @@ HRESULT FlvSource::OnVideoData(IMFAsyncResult *result){
 }
 
 HRESULT FlvSource::EndOfFile(){
-  auto vstream = static_cast<FlvStream*>(video_stream.GetInterfacePtr());
-  auto astream = static_cast<FlvStream*>(audio_stream.GetInterfacePtr());
+  auto vstream = static_cast<FlvStream*>(video_stream.Get());
+  auto astream = static_cast<FlvStream*>(audio_stream.Get());
   if (vstream)
     vstream->EndOfStream();
   if (astream)
@@ -1409,8 +1347,8 @@ bool FlvSource::NeedDemux() {
   }
   if (status.pending_request)
     return false;
-  auto vstream = static_cast<FlvStream*>(video_stream.GetInterfacePtr());
-  auto astream = static_cast<FlvStream*>(audio_stream.GetInterfacePtr());
+  auto vstream = static_cast<FlvStream*>(video_stream.Get());
+  auto astream = static_cast<FlvStream*>(audio_stream.Get());
   if (vstream && vstream->NeedsData())
     return true;
   if (astream && astream->NeedsData())
@@ -1423,7 +1361,7 @@ HRESULT FlvSource::AsyncEndOfStream(){
     auto hr = this->DoEndOfStream();
     result->SetStatus(hr);
     return S_OK;
-  }), this);
+  }).Get(), this->AsIUnknown().Get());
 }
 //-------------------------------------------------------------------
 // OnEndOfStream
@@ -1477,8 +1415,8 @@ HRESULT FlvSource::FinishInitialize(){
 }
 
 HRESULT FlvSource::CreateStream(DWORD index, IMFMediaType*media_type, IMFMediaStream**v) {
-  _com_ptr_t < _com_IIID < IMFStreamDescriptor, &__uuidof(IMFStreamDescriptor)>> pSD;
-  _com_ptr_t < _com_IIID < IMFMediaTypeHandler, &__uuidof(IMFMediaTypeHandler)>> pHandler;
+  ComPtr<IMFStreamDescriptor> pSD;
+  ComPtr<IMFMediaTypeHandler> pHandler;
 
   auto  hr = MFCreateStreamDescriptor(index, 1, &media_type, &pSD);
 
@@ -1495,7 +1433,8 @@ HRESULT FlvSource::CreateStream(DWORD index, IMFMediaType*media_type, IMFMediaSt
   // Create the new stream.
   if (SUCCEEDED(hr))
   {
-    *v = new (std::nothrow) FlvStream(this, pSD, hr);
+    //*v = new (std::nothrow) FlvStream(this, pSD, hr);
+    hr = MakeAndInitialize<FlvStream>(v, this, pSD.Get());
   }
 
   // Add the stream to the array.
@@ -1512,7 +1451,7 @@ HRESULT FlvSource::CreateAudioStream()
   IMFMediaTypePtr media_type;
   auto hr = CreateAudioMediaType(header, &media_type);
   if (ok(hr))  // audio stream_index  is 1
-    hr = CreateStream(1, media_type, &audio_stream);
+    hr = CreateStream(1, media_type.Get(), &audio_stream);
   return hr;
 }
 
@@ -1520,7 +1459,7 @@ HRESULT FlvSource::CreateVideoStream(){
   IMFMediaTypePtr media_type;
   auto hr = CreateVideoMediaType(header, &media_type);
   if (ok(hr))
-    hr = CreateStream(0, media_type, &video_stream);
+    hr = CreateStream(0, media_type.Get(), &video_stream);
   return hr;
 }
 
@@ -1558,14 +1497,14 @@ HRESULT FlvSource::ValidatePresentationDescriptor(IMFPresentationDescriptor *pPD
 
 void FlvSource::StreamingError(HRESULT hr)
 {
-    if (m_state == STATE_OPENING)
+  if (m_state == SourceState::STATE_OPENING)
     {
         // An error happened during BeginOpen.
         // Invoke the callback with the status code.
 
         CompleteOpen(hr);
     }
-    else if (m_state != STATE_SHUTDOWN)
+  else if (m_state != SourceState::STATE_SHUTDOWN)
     {
         // An error occurred during streaming. Send the MEError event
         // to notify the pipeline.
@@ -1622,7 +1561,7 @@ HRESULT CreateVideoMediaType(const flv_file_header& header, IMFMediaType **ppTyp
         (*ppType)->AddRef();
     }
 
-    SafeRelease(&pType);
+    release(&pType);
     return hr;
 }
 
@@ -1652,7 +1591,7 @@ HRESULT CreateAudioMediaType(const flv_file_header& header, IMFMediaType **ppTyp
         (*ppType)->AddRef();
     }
 
-    SafeRelease(&pType);
+    release(&pType);
     return hr;
 }
 
@@ -1670,7 +1609,7 @@ HRESULT GetStreamMajorType(IMFStreamDescriptor *pSD, GUID *pguidMajorType)
     {
         hr = pHandler->GetMajorType(pguidMajorType);
     }
-    SafeRelease(&pHandler);
+    release(&pHandler);
     return hr;
 }
 
@@ -1694,7 +1633,7 @@ HRESULT NewMFMediaBuffer(const uint8_t*data, uint32_t length, IMFMediaBuffer **r
   if (ok(hr))
     hr = v->Unlock();
   if (ok(hr)){
-    *rtn = v;
+    *rtn = v.Get();
     (*rtn)->AddRef();
   }
   return hr;
@@ -1719,7 +1658,7 @@ HRESULT NewNaluBuffer(uint8_t nallength, packet const&nalu, IMFMediaBuffer **rtn
   if (ok(hr))
     hr = v->Unlock();
   if (ok(hr)){
-    *rtn = v;
+    *rtn = v.Get();
     (*rtn)->AddRef();
   }
   return hr;
@@ -1734,4 +1673,12 @@ _prop_variant_t::_prop_variant_t(PROPVARIANT const*p){
 }
 _prop_variant_t::_prop_variant_t(_prop_variant_t const&rhs){
   PropVariantCopy(this, &rhs);
+}
+
+
+ComPtr<IUnknown> FlvSource::AsIUnknown(){
+  ComPtr<IUnknown> v;
+  auto hr = QueryInterface(__uuidof(IUnknown), &v);
+  hr;
+  return v;
 }

@@ -2,102 +2,6 @@
 #include "FlvByteStreamHandler.h"
 
 //-------------------------------------------------------------------
-// FlvByteStreamHandler  class
-//-------------------------------------------------------------------
-
-
-//-------------------------------------------------------------------
-// CreateInstance
-// Static method to create an instance of the oject.
-//
-// This method is used by the class factory.
-//
-//-------------------------------------------------------------------
-
-HRESULT FlvByteStreamHandler::CreateInstance(REFIID iid, void **ppv)
-{
-    if (ppv == NULL)
-    {
-        return E_POINTER;
-    }
-
-    HRESULT hr = S_OK;
-
-    FlvByteStreamHandler *pHandler = new (std::nothrow) FlvByteStreamHandler(hr);
-    if (pHandler == NULL)
-    {
-        return E_OUTOFMEMORY;
-    }
-
-    if (SUCCEEDED(hr))
-    {
-        hr = pHandler->QueryInterface(iid, ppv);
-    }
-
-    SafeRelease(&pHandler);
-    return hr;
-}
-
-
-//-------------------------------------------------------------------
-// Constructor
-//-------------------------------------------------------------------
-
-FlvByteStreamHandler::FlvByteStreamHandler(HRESULT& /*hr*/)
-    : m_cRef(1), m_pSource(NULL), m_pResult(NULL)
-{
-    DllAddRef();
-}
-
-//-------------------------------------------------------------------
-// Destructor
-//-------------------------------------------------------------------
-
-FlvByteStreamHandler::~FlvByteStreamHandler()
-{
-    SafeRelease(&m_pSource);
-    SafeRelease(&m_pResult);
-
-    DllRelease();
-}
-
-
-//-------------------------------------------------------------------
-// IUnknown methods
-//-------------------------------------------------------------------
-
-ULONG FlvByteStreamHandler::AddRef()
-{
-    return InterlockedIncrement(&m_cRef);
-}
-
-ULONG FlvByteStreamHandler::Release()
-{
-    LONG cRef = InterlockedDecrement(&m_cRef);
-    if (cRef == 0)
-    {
-        delete this;
-    }
-    return cRef;
-}
-
-HRESULT FlvByteStreamHandler::QueryInterface(REFIID riid, void** ppv)
-{
-    static const QITAB qit[] =
-    {
-        QITABENT(FlvByteStreamHandler, IMFByteStreamHandler),
-        QITABENT(FlvByteStreamHandler, IMFAsyncCallback),
-        { 0 }
-    };
-    return QISearch(this, qit, riid, ppv);
-}
-
-
-//-------------------------------------------------------------------
-// IMFByteStreamHandler methods
-//-------------------------------------------------------------------
-
-//-------------------------------------------------------------------
 // BeginCreateObject
 // Starts creating the media source.
 //-------------------------------------------------------------------
@@ -129,11 +33,11 @@ HRESULT FlvByteStreamHandler::BeginCreateObject(
 
     HRESULT hr = S_OK;
 
-    IMFAsyncResult *pResult = NULL;
-    FlvSource    *pSource = NULL;
+    IMFAsyncResultPtr pResult = NULL;
+    IMFMediaSourceExtPtr src;
 
     // Create an instance of the media source.
-    hr = FlvSource::CreateInstance(&pSource);
+    hr = MakeAndInitialize<FlvSource>(&src);
 
     // Create a result object for the caller's async callback.
     if (SUCCEEDED(hr))
@@ -146,7 +50,7 @@ HRESULT FlvByteStreamHandler::BeginCreateObject(
     // and then we will invoke the caller's callback.
     if (SUCCEEDED(hr))
     {
-        hr = pSource->BeginOpen(pByteStream, this, NULL);
+      hr = src->BeginOpen(pByteStream, this, NULL);
     }
 
     if (SUCCEEDED(hr))
@@ -156,16 +60,11 @@ HRESULT FlvByteStreamHandler::BeginCreateObject(
             *ppIUnknownCancelCookie = NULL;
         }
 
-        m_pSource = pSource;
-        m_pSource->AddRef();
+        source = src;
 
         m_pResult = pResult;
-        m_pResult->AddRef();
     }
 
-// cleanup
-    SafeRelease(&pSource);
-    SafeRelease(&pResult);
     return hr;
 }
 
@@ -194,14 +93,13 @@ HRESULT FlvByteStreamHandler::EndCreateObject(
     if (SUCCEEDED(hr))
     {
         *pObjectType = MF_OBJECT_MEDIASOURCE;
-
-        assert(m_pSource != NULL);
-
-        hr = m_pSource->QueryInterface(IID_PPV_ARGS(ppObject));
+// todo: shoud use query-interface to iunknown?        ComPtr<IUnknown> p;
+//        hr = source.As(&p);
+        *ppObject = source.Detach();
     }
 
-    SafeRelease(&m_pSource);
-    SafeRelease(&m_pResult);
+    source = nullptr;
+    source = nullptr;
     return hr;
 }
 
@@ -225,20 +123,12 @@ HRESULT FlvByteStreamHandler::GetMaxNumberOfBytesRequiredForResolution(QWORD* pq
 
 HRESULT FlvByteStreamHandler::Invoke(IMFAsyncResult* pResult)
 {
-    HRESULT hr = S_OK;
-
-    if (m_pSource)
-    {
-        hr = m_pSource->EndOpen(pResult);
-    }
-    else
-    {
-        hr = E_UNEXPECTED;
-    }
+    assert(source);
+    auto hr = source->EndOpen(pResult);
 
     m_pResult->SetStatus(hr);
 
-    hr = MFInvokeCallback(m_pResult);
+    hr = MFInvokeCallback(m_pResult.Get());
 
     return hr;
 }

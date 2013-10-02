@@ -73,7 +73,6 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
-    <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
@@ -110,17 +109,13 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
-      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PrecompiledHeader />
-      <WarningLevel>Level3</WarningLevel>
-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <WarningLevel>Level4</WarningLevel>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
-      <RegisterOutput>false</RegisterOutput>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention />
       <TargetMachine>MachineX64</TargetMachine>
       <ModuleDefinitionFile>FlvSource.def</ModuleDefinitionFile>
@@ -191,6 +186,7 @@
     <ClInclude Include="buffer.hpp" />
     <ClInclude Include="flv.hpp" />
     <ClInclude Include="flv_meta.hpp" />
+    <ClInclude Include="MFMediaSourceExt.hpp" />
     <ClInclude Include="keyframes.hpp" />
     <ClInclude Include="InterfaceList.hpp" />
     <ClInclude Include="FlvByteStreamHandler.h" />
@@ -201,9 +197,6 @@
     <ClInclude Include="FlvParse.hpp" />
     <ClInclude Include="packet.hpp" />
     <ClInclude Include="flv_raw_header.hpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="ReadMe.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -1,24 +1,18 @@
 #pragma once
-
+#include <wrl.h>
+using namespace Microsoft::WRL;
 
 //-------------------------------------------------------------------
 // FlvByteStreamHandler  class
 //
 // Byte-stream handler for Flv streams.
 //-------------------------------------------------------------------
-
-class FlvByteStreamHandler
-    : public IMFByteStreamHandler,
-      public IMFAsyncCallback
+class __declspec(uuid("EFE6208A-0A2C-49fa-8A01-3768B559B6DA"))
+FlvByteStreamHandler 
+  : public RuntimeClass<RuntimeClassFlags<ClassicCom>, IMFByteStreamHandler, IMFAsyncCallback> 
 {
 public:
-    static HRESULT CreateInstance(REFIID iid, void **ppMEG);
-
-    // IUnknown
-    STDMETHODIMP QueryInterface(REFIID iid, void** ppv);
-    STDMETHODIMP_(ULONG) AddRef();
-    STDMETHODIMP_(ULONG) Release();
-
+  FlvByteStreamHandler() = default;
     // IMFAsyncCallback
     STDMETHODIMP GetParameters(DWORD* /*pdwFlags*/, DWORD* /*pdwQueue*/)
     {
@@ -47,16 +41,11 @@ public:
     STDMETHODIMP GetMaxNumberOfBytesRequiredForResolution(QWORD* pqwBytes);
 
 private:
-
-    FlvByteStreamHandler(HRESULT& hr);
-    ~FlvByteStreamHandler();
+    ~FlvByteStreamHandler() = default;
 
     long            m_cRef; // reference count
-    FlvSource     *m_pSource;
-    IMFAsyncResult  *m_pResult;
+    IMFMediaSourceExtPtr     source;
+    IMFAsyncResultPtr  m_pResult;
 };
 
-inline HRESULT FlvByteStreamHandler_CreateInstance(REFIID riid, void **ppv)
-{
-    return FlvByteStreamHandler::CreateInstance(riid, ppv);
-}
+CoCreatableClass(FlvByteStreamHandler);

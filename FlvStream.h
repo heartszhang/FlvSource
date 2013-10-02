@@ -1,19 +1,21 @@
 #pragma once
+#include <wrl\implements.h>
+#include <mfidl.h>      //IMFMediaStream
+#include <mferror.h>
+#include "MFMediaSourceExt.hpp"
+#include "InterfaceList.hpp"
+using namespace Microsoft::WRL;
 
-class FlvSource;
+typedef InterfaceList<IMFSample>       SampleList;
+typedef InterfaceList<IUnknown>  TokenList;    // List of tokens for IMFMediaStream::RequestSample
 
 // The media stream object.
-class FlvStream : public IMFMediaStream
+class FlvStream : public RuntimeClass<RuntimeClassFlags<ClassicCom>, IMFMediaStream, IMFMediaStreamExt>
 {
-public:
-
-    FlvStream(FlvSource *pSource, IMFStreamDescriptor *pSD, HRESULT& hr);
     ~FlvStream();
-
-    // IUnknown
-    STDMETHODIMP QueryInterface(REFIID iid, void** ppv);
-    STDMETHODIMP_(ULONG) AddRef();
-    STDMETHODIMP_(ULONG) Release();
+public:
+  FlvStream() = default;
+  HRESULT RuntimeClassInitialize(IMFMediaSourceExt *pSource, IMFStreamDescriptor *pSD);
 
     // IMFMediaEventGenerator
     STDMETHODIMP BeginGetEvent(IMFAsyncCallback* pCallback,IUnknown* punkState);
@@ -39,9 +41,6 @@ public:
 
     HRESULT     DeliverPayload(IMFSample* pSample);
 
-    // Callbacks
- //   HRESULT     OnDispatchSamples(IMFAsyncResult *pResult);
-
 private:
   HRESULT CheckAcceptRequestSample()const;
 
@@ -49,7 +48,7 @@ private:
 
     HRESULT CheckShutdown() const
     {
-        return ( m_state == STATE_SHUTDOWN ? MF_E_SHUTDOWN : S_OK );
+      return (m_state == SourceState::STATE_SHUTDOWN ? MF_E_SHUTDOWN : S_OK);
     }
     HRESULT DispatchSamples();
 
@@ -57,11 +56,11 @@ private:
 private:
     long                m_cRef = 1;                 // reference count, 标准的Interface实现
 
-    FlvSource         *source;             // Parent media source
+    IMFMediaSourceExt         *source;             // Parent media source
     IMFStreamDescriptorPtr stream_descriptor;
     IMFMediaEventQueuePtr  event_queue;         // Event generator helper
 
-    SourceState         m_state = STATE_STOPPED;        // Current state (running, stopped, paused)
+    SourceState         m_state = SourceState::STATE_STOPPED;        // Current state (running, stopped, paused)
     bool                activated = false;              // Is the stream active?
     bool                eos   = false;          // Did the source reach the end of the stream?
 

@@ -4,7 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <comdef.h>
-#include <comip.h>
+#include <wrl.h>
 #include <mfidl.h>
 #include <mfapi.h>
 #include "bigendian.hpp"
@@ -13,6 +13,7 @@
 #include "flv.hpp"
 #include "avcc.hpp"
 #include "MFAsyncCallback.hpp"
+#include "MFMediaSourceExt.hpp"
 struct aac_audio_spec_config;// iso-14496-3
 struct aac_raw_frame_data;
 struct flv_header{
@@ -114,17 +115,7 @@ struct flv_file_header : public flv_meta{
   }status;
 };
 
-typedef _com_ptr_t < _com_IIID<IMFMediaEventQueue, &__uuidof(IMFMediaEventQueue)>>                IMFMediaEventQueuePtr;
-typedef _com_ptr_t < _com_IIID < IMFPresentationDescriptor, &_uuidof(IMFPresentationDescriptor)>> IMFPresentationDescriptorPtr;
-typedef _com_ptr_t < _com_IIID < IMFByteStream, &_uuidof(IMFByteStream)>>                         IMFByteStreamPtr;
-typedef _com_ptr_t < _com_IIID < IMFMediaStream, &_uuidof(IMFMediaStream)>>                       IMFMediaStreamPtr;
-typedef _com_ptr_t < _com_IIID<IMFMediaType, &__uuidof(IMFMediaType) >>                           IMFMediaTypePtr;
-typedef _com_ptr_t < _com_IIID<IMFStreamDescriptor, &__uuidof(IMFStreamDescriptor) >>             IMFStreamDescriptorPtr;
-typedef _com_ptr_t < _com_IIID<IMFSample, &__uuidof(IMFSample) >>                                 IMFSamplePtr;
-typedef _com_ptr_t < _com_IIID<IUnknown, &__uuidof(IUnknown) >>                                   IUnknownPtr;
-typedef _com_ptr_t < _com_IIID<IMFMediaBuffer, &__uuidof(IMFMediaBuffer) >>                       IMFMediaBufferPtr;
-typedef _com_ptr_t < _com_IIID<IMFAsyncResult, &__uuidof(IMFAsyncResult)>> IMFAsyncResultPtr;
-typedef _com_ptr_t < _com_IIID < IMFMediaSource, &__uuidof(IMFMediaSource)>> IMFMediaSourcePtr;
+
 struct flv_parser : public buffer{
   IMFByteStreamPtr        stream;
   HRESULT                     skip_previsou_tag_size();
@@ -175,7 +166,7 @@ template<typename data_t>
 HRESULT flv_parser::begin_read(IMFAsyncCallback*cb, IUnknown*s, uint32_t length, HRESULT(flv_parser::*decoder)(data_t*)){
   Reset(length);
   IMFAsyncResultPtr caller_result;
-  auto hr = MFCreateAsyncResult(new MFState<data_t>(), cb, s, &caller_result);
+  auto hr = MFCreateAsyncResult(NewMFState<data_t>(data_t()).Get(), cb, s, &caller_result);
   hr = stream->BeginRead(
     DataPtr(),
     length,
@@ -185,13 +176,13 @@ HRESULT flv_parser::begin_read(IMFAsyncCallback*cb, IUnknown*s, uint32_t length,
       this->MoveEnd(cb);
       if (ok(hr))
         hr = result->GetStatus();
-      auto &v = FromAsyncResult<data_t>(caller_result);
+      auto &v = FromAsyncResult<data_t>(caller_result.Get());
       if (ok(hr))
         hr = (this->*decoder)(&v);
       caller_result->SetStatus(hr);
-      MFInvokeCallback(caller_result);
+      MFInvokeCallback(caller_result.Get());
       return S_OK;
-  }), nullptr);
+  }).Get(), nullptr);
   return hr;
 }
 template<typename data_t>

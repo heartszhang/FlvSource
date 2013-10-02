@@ -1,14 +1,4 @@
-﻿//////////////////////////////////////////////////////////////////////////
-//
-// dllmain.cpp : Implements DLL exports and COM class factory
-//
-//       - DllMain
-//       - DllCanUnloadNow
-//       - DllRegisterServer
-//       - DllUnregisterServer
-//       - DllGetClassObject
-//
-//////////////////////////////////////////////////////////////////////////
+﻿#include <wrl.h>
 #include "FlvSource.h"
 #include "FlvByteStreamHandler.h"
 
@@ -16,193 +6,62 @@
 #include <strsafe.h>
 
 #include <initguid.h>
+#pragma comment(lib, "runtimeobject.lib")
 
-const DWORD CHARS_IN_GUID = 39;
-//注册在HKCU,而不是HKLM
-HRESULT RegisterObject(
-    HMODULE hModule,
-    const GUID& guid,
-    const TCHAR *pszDescription,
-    const TCHAR *pszThreadingModel
-    );
+using namespace Microsoft::WRL;
 
-HRESULT UnregisterObject(const GUID& guid);
+STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, _COM_Outptr_ void** ppv)
+{
+  return Module<InProc>::GetModule().GetClassObject(rclsid, riid, ppv);
+}
+
+
+STDAPI DllCanUnloadNow()
+{
+  return Module<InProc>::GetModule().Terminate() ? S_OK : S_FALSE;
+}
+HMODULE current_module = nullptr;
+STDAPI_(BOOL) DllMain(_In_opt_ HINSTANCE hinst, DWORD reason, _In_opt_ void*)
+{
+  if (reason == DLL_PROCESS_ATTACH)
+  {
+    current_module = hinst;
+    DisableThreadLibraryCalls(hinst);
+  }
+  return TRUE;
+}
 
 // {EFE6208A-0A2C-49fa-8A01-3768B559B6DA}
-DEFINE_GUID(CLSID_MFFlvByteStreamHandler, 0xefe6208a, 0xa2c, 0x49fa, 0x8a, 0x1, 0x37, 0x68, 0xb5, 0x59, 0xb6, 0xda);
-
-// Module Ref count
-long g_cRefModule = 0;
-
-HMODULE g_hModule = NULL;// Handle to the DLL's module
+// DEFINE_GUID(CLSID_MFFlvByteStreamHandler, 0xefe6208a, 0xa2c, 0x49fa, 0x8a, 0x1, 0x37, 0x68, 0xb5, 0x59, 0xb6, 0xda);
 
 void DllAddRef()
 {
-    InterlockedIncrement(&g_cRefModule);
+  Module<InProc>::GetModule().IncrementObjectCount();
 }
 
 void DllRelease()
 {
-    InterlockedDecrement(&g_cRefModule);
+  Module<InProc>::GetModule().DecrementObjectCount();
 }
 
 // Description string for the bytestream handler.
-const TCHAR* sByteStreamHandlerDescription = TEXT("Flv Source ByteStreamHandler");
-
-// File extension for WAVE files.
-const TCHAR* sFileExtension = TEXT(".flv");
-
-// Registry location for bytestream handlers.
-const TCHAR* REGKEY_MF_BYTESTREAM_HANDLERS = TEXT("Software\\Microsoft\\Windows Media Foundation\\ByteStreamHandlers");
+const wchar_t* ByteStreamHandlerDescription = L"Flv Source ByteStreamHandler";
+const wchar_t* FileExtension = L".flv";
+// Registry location for bytestream handlers. //HKCU/
+const wchar_t* REGKEY_MF_BYTESTREAM_HANDLERS = L"Software\\Microsoft\\Windows Media Foundation\\ByteStreamHandlers";
 
 
 // Functions to register and unregister the byte stream handler.
-
-HRESULT RegisterByteStreamHandler(const GUID& guid, const TCHAR *sFileExtension, const TCHAR *sDescription);
-HRESULT UnregisterByteStreamHandler(const GUID& guid, const TCHAR *sFileExtension);
+HRESULT RegisterByteStreamHandler(const GUID& guid, const wchar_t *sFileExtension, const wchar_t *sDescription);
+HRESULT UnregisterByteStreamHandler(const GUID& guid, const wchar_t *sFileExtension);
 
 // Misc Registry helpers
-HRESULT SetKeyValue(HKEY hKey, const TCHAR *sName, const TCHAR *sValue);
+HRESULT SetKeyValue(HKEY hKey, const wchar_t *sName, const wchar_t *sValue);
 
 
-//
-// IClassFactory implementation
-//
-typedef HRESULT (*PFNCREATEINSTANCE)(REFIID riid, void **ppvObject);
-struct CLASS_OBJECT_INIT
-{
-    const CLSID       *pClsid;
-    PFNCREATEINSTANCE  pfnCreate;
-};
-
-// Classes supported by this module:
-const CLASS_OBJECT_INIT c_rgClassObjectInit[] =
-{
-  { &CLSID_MFFlvByteStreamHandler, FlvByteStreamHandler_CreateInstance },
-};
-
-class CClassFactory : public IClassFactory
-{
-public:
-
-    static HRESULT CreateInstance(
-        REFCLSID clsid, // The CLSID of the object to create (from DllGetClassObject)
-        const CLASS_OBJECT_INIT *pClassObjectInits,     // Array of class factory data.
-        size_t cClassObjectInits, // Number of elements in the array.
-        REFIID riid, // The IID of the interface to retrieve (from DllGetClassObject)
-        void **ppv // Receives a pointer to the interface.
-        )
-    {
-        *ppv = NULL;
-
-        HRESULT hr = CLASS_E_CLASSNOTAVAILABLE;
-
-        for (size_t i = 0; i < cClassObjectInits; i++)
-        {
-            if (clsid == *pClassObjectInits[i].pClsid)
-            {
-                IClassFactory *pClassFactory = new (std::nothrow) CClassFactory(pClassObjectInits[i].pfnCreate);
-
-                if (pClassFactory)
-                {
-                    hr = pClassFactory->QueryInterface(riid, ppv);
-                    pClassFactory->Release();
-                }
-                else
-                {
-                    hr = E_OUTOFMEMORY;
-                }
-                break; // match found
-            }
-        }
-        return hr;
-    }
-
-    // IUnknown methods
-    IFACEMETHODIMP QueryInterface(REFIID riid, void ** ppv)
-    {
-        static const QITAB qit[] =
-        {
-            QITABENT(CClassFactory, IClassFactory),
-            { 0 }
-        };
-        return QISearch(this, qit, riid, ppv);
-    }
-
-    IFACEMETHODIMP_(ULONG) AddRef()
-    {
-        return InterlockedIncrement(&m_cRef);
-    }
-
-    IFACEMETHODIMP_(ULONG) Release()
-    {
-        long cRef = InterlockedDecrement(&m_cRef);
-        if (cRef == 0)
-        {
-            delete this;
-        }
-        return cRef;
-    }
-
-    // IClassFactory methods
-
-    IFACEMETHODIMP CreateInstance(IUnknown *punkOuter, REFIID riid, void **ppv)
-    {
-        return punkOuter ? CLASS_E_NOAGGREGATION : m_pfnCreate(riid, ppv);
-    }
-
-    IFACEMETHODIMP LockServer(BOOL fLock)
-    {
-        if (fLock)
-        {
-            DllAddRef();
-        }
-        else
-        {
-            DllRelease();
-        }
-        return S_OK;
-    }
-
-private:
-
-    CClassFactory(PFNCREATEINSTANCE pfnCreate) : m_cRef(1), m_pfnCreate(pfnCreate)
-    {
-        DllAddRef();
-    }
-
-    ~CClassFactory()
-    {
-        DllRelease();
-    }
-
-    long m_cRef;
-    PFNCREATEINSTANCE m_pfnCreate;
-};
-
-//
-// Standard DLL functions
-//
-
-STDAPI_(BOOL) DllMain(HINSTANCE hInstance, DWORD dwReason, void *)
-{
-    if (dwReason == DLL_PROCESS_ATTACH)
-    {
-        g_hModule = (HMODULE)hInstance;
-        DisableThreadLibraryCalls(hInstance);
-    }
-    return TRUE;
-}
-
-STDAPI DllCanUnloadNow()
-{
-    return (g_cRefModule == 0) ? S_OK : S_FALSE;
-}
-
-STDAPI DllGetClassObject(REFCLSID clsid, REFIID riid, void **ppv)
-{
-    return CClassFactory::CreateInstance(clsid, c_rgClassObjectInit, ARRAYSIZE(c_rgClassObjectInit), riid, ppv);
-}
+//注册在HKCU,而不是HKLM
+HRESULT RegisterObject(HMODULE hModule, const GUID& guid, const wchar_t *pszDescription, const wchar_t *pszThreadingModel);
+HRESULT UnregisterObject(const GUID& guid);
 
 STDAPI DllRegisterServer()
 {
@@ -210,19 +69,19 @@ STDAPI DllRegisterServer()
 
     // Register the bytestream handler's CLSID as a COM object.
     hr = RegisterObject(
-            g_hModule,                              // Module handle
-            CLSID_MFFlvByteStreamHandler,   // CLSID
-            sByteStreamHandlerDescription,          // Description
-            TEXT("Both")                            // Threading model
+            current_module,                              // Module handle
+            __uuidof(FlvByteStreamHandler),//CLSID_MFFlvByteStreamHandler,   // CLSID
+            ByteStreamHandlerDescription,          // Description
+            L"Both"                            // Threading model
             );
 
     // Register the bytestream handler as the handler for the MPEG-1 file extension.
     if (SUCCEEDED(hr))
     {
         hr = RegisterByteStreamHandler(
-          CLSID_MFFlvByteStreamHandler,       // CLSID
-            sFileExtension,                             // Supported file extension
-            sByteStreamHandlerDescription               // Description
+          __uuidof(FlvByteStreamHandler),//CLSID_MFFlvByteStreamHandler,       // CLSID
+            FileExtension,                             // Supported file extension
+            ByteStreamHandlerDescription               // Description
             );
     }
 
@@ -231,13 +90,13 @@ STDAPI DllRegisterServer()
 
 STDAPI DllUnregisterServer()
 {
-    // Unregister the CLSIDs
-  UnregisterObject(CLSID_MFFlvByteStreamHandler);
+  // Unregister the CLSIDs
+  UnregisterObject(__uuidof(FlvByteStreamHandler));
 
-    // Unregister the bytestream handler for the file extension.
-  UnregisterByteStreamHandler(CLSID_MFFlvByteStreamHandler, sFileExtension);
+  // Unregister the bytestream handler for the file extension.
+  UnregisterByteStreamHandler(__uuidof(FlvByteStreamHandler), FileExtension);
 
-    return S_OK;
+  return S_OK;
 }
 
 
@@ -266,6 +125,7 @@ HRESULT CreateRegistryKey(HKEY hKey, LPCTSTR subkey, HKEY *phKey)
     return HRESULT_FROM_WIN32(lreturn);
 }
 
+const DWORD CHARS_IN_GUID = 39;
 
 ///////////////////////////////////////////////////////////////////////
 // Name: RegisterByteStreamHandler
@@ -280,7 +140,7 @@ HRESULT CreateRegistryKey(HKEY hKey, LPCTSTR subkey, HKEY *phKey)
 //       illustrated in this project.
 ///////////////////////////////////////////////////////////////////////
 
-HRESULT RegisterByteStreamHandler(const GUID& guid, const TCHAR *sFileExtension, const TCHAR *sDescription)
+HRESULT RegisterByteStreamHandler(const GUID& guid, const wchar_t *sFileExtension, const wchar_t *sDescription)
 {
     HRESULT hr = S_OK;
 
@@ -298,7 +158,7 @@ HRESULT RegisterByteStreamHandler(const GUID& guid, const TCHAR *sFileExtension,
 
     if (SUCCEEDED(hr))
     {
-        hr = StringFromGUID2(guid, szCLSID, CHARS_IN_GUID);
+        StringFromGUID2(guid, szCLSID, CHARS_IN_GUID);
     }
 
     if (SUCCEEDED(hr))
@@ -313,13 +173,13 @@ HRESULT RegisterByteStreamHandler(const GUID& guid, const TCHAR *sFileExtension,
 
     if (SUCCEEDED(hr))
     {
-        hr = RegSetValueEx(
+        hr = RegSetValueExW(
             hSubKey,
             szCLSID,
             0,
             REG_SZ,
             (BYTE*)sDescription,
-            static_cast<DWORD>((cchDescription + 1) * sizeof(TCHAR))
+            static_cast<DWORD>((cchDescription + 1) * sizeof(wchar_t))
             );
     }
 
@@ -370,11 +230,8 @@ HRESULT UnregisterByteStreamHandler(const GUID& guid, const TCHAR *sFileExtensio
     return hr;
 }
 
-
-
-
 // Converts a CLSID into a string with the form "CLSID\{clsid}"
-HRESULT CreateObjectKeyName(const GUID& guid, TCHAR *sName, DWORD cchMax)
+HRESULT CreateObjectKeyName(const GUID& guid, wchar_t *sName, DWORD cchMax)
 {
     // convert CLSID uuid to string
     OLECHAR szCLSID[CHARS_IN_GUID];
@@ -382,7 +239,7 @@ HRESULT CreateObjectKeyName(const GUID& guid, TCHAR *sName, DWORD cchMax)
     if (SUCCEEDED(hr))
     {
         // Create a string of the form "CLSID\{clsid}"
-        hr = StringCchPrintf(sName, cchMax, TEXT("Software\\Classes\\CLSID\\%ls"), szCLSID);
+        hr = StringCchPrintfW(sName, cchMax, L"Software\\Classes\\CLSID\\%ls", szCLSID);
     }
     return hr;
 }
@@ -398,7 +255,7 @@ HRESULT CreateRegKeyAndValue(
 {
     *phkResult = NULL;
 
-    LONG lRet = RegCreateKeyEx(
+    LONG lRet = RegCreateKeyExW(
         hKey, pszSubKeyName,
         0,  NULL, REG_OPTION_NON_VOLATILE,
         KEY_ALL_ACCESS, NULL, phkResult, NULL);
@@ -426,14 +283,14 @@ HRESULT CreateRegKeyAndValue(
 HRESULT RegisterObject(
     HMODULE hModule,
     const GUID& guid,
-    const TCHAR *pszDescription,
-    const TCHAR *pszThreadingModel
+    const wchar_t *pszDescription,
+    const wchar_t *pszThreadingModel
     )
-{
+{  
     HKEY hKey = NULL;
     HKEY hSubkey = NULL;
 
-    TCHAR achTemp[MAX_PATH];
+    wchar_t achTemp[MAX_PATH];
 
     // Create the name of the key from the object's CLSID
     HRESULT hr = CreateObjectKeyName(guid, achTemp, MAX_PATH);
@@ -452,7 +309,7 @@ HRESULT RegisterObject(
 
     if (SUCCEEDED(hr))
     {
-        (void)GetModuleFileName(hModule, achTemp, MAX_PATH);
+        (void)GetModuleFileNameW(hModule, achTemp, MAX_PATH);
 
         hr = HRESULT_FROM_WIN32(GetLastError());
     }
@@ -496,14 +353,14 @@ HRESULT RegisterObject(
 
 HRESULT UnregisterObject(const GUID& guid)
 {
-    TCHAR achTemp[MAX_PATH];
+  wchar_t achTemp[MAX_PATH];
 
     HRESULT hr = CreateObjectKeyName(guid, achTemp, MAX_PATH);
 
     if (SUCCEEDED(hr))
     {
         // Delete the key recursively.
-      LONG lRes = RegDeleteTree(HKEY_CURRENT_USER, achTemp);
+      LONG lRes = RegDeleteTreeW(HKEY_CURRENT_USER, achTemp);
 
         hr = HRESULT_FROM_WIN32(lRes);
     }
