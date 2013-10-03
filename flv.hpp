@@ -92,13 +92,13 @@ const static int     flv_previous_tag_size_field_length = 4;
 const static int     flv_audio_header_length            = 1;
 const static int     flv_video_header_length            = 1;
 const static int     flv_aac_packet_type_length         = 1;
-const static int     flv_avc_packet_type_length         = 4;
+const static int     flv_avc_packet_type_length         = 4;  //avc_packet_type + composite_time
 const static uint8_t flv_file_header_audio_mask         = 1 << 2;
 const static uint8_t flv_file_header_video_mask         = 1 << 0;
 const static uint8_t flv_tag_header_type_mask           = 0x1f;
-const static uint8_t flv_tag_header_filter_mask         = 5;
+const static uint8_t flv_tag_header_filter_mask         = 5;  //bits
 }
 
 struct audio_packet_header;
-struct video_stream_header;
+struct video_packet_header;
 

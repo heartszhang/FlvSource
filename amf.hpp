@@ -22,7 +22,6 @@ namespace flv{
     uint32_t    script_data_value_toui32();
     uint8_t     script_data_value_toui8();
     double      script_data_value_tod();
-//    keyframes   decode_keyframes(int32_t*ret);
 
     explicit amf_reader(const uint8_t*d, uint32_t len) : binary_reader(d, len){};
     amf_reader() = delete;

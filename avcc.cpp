@@ -1,7 +1,7 @@
 #include "avcc.hpp"
 #include <cassert>
 
-//startcode + sps[0] + startcode + pps
+//startcode + sps[0] + startcode + pps[0]
 packet flv::avcc::code_private_data()const{  // sequence_header
   assert(!sps.empty() && !pps.empty());
   uint32_t startcode = 0x00000001;
@@ -52,5 +52,5 @@ flv::avcc flv::avcc_reader::avcc(){
   if (pointer >= length)
     return v;
   auto l = ui32();  //nalu length
-  return packet(l);
+  return std::move(packet(l));
 }

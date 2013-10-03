@@ -16,12 +16,7 @@ HRESULT FlvByteStreamHandler::BeginCreateObject(
         /* [in] */ IUnknown *punkState                  // Can be NULL
         )
 {
-    if (pByteStream == NULL)
-    {
-        return E_POINTER;
-    }
-
-    if (pCallback == NULL)
+    if (pByteStream == NULL || pCallback == NULL)
     {
         return E_POINTER;
     }

@@ -5,33 +5,9 @@ namespace bigendian{
 uint64_t toui64(const uint8_t *input)
 {
   return ntohll(*(const uint64_t*)input);
-  /*
-  uint64_t rval;
-  uint8_t *data = (uint8_t *)&rval;
-
-  data[0] = input[7];
-  data[1] = input[6];
-  data[2] = input[5];
-  data[3] = input[4];
-  data[4] = input[3];
-  data[5] = input[2];
-  data[6] = input[1];
-  data[7] = input[0];
-
-  return rval;
-  */
 }
 uint32_t touint32(uint8_t const*input){
   return ntohl(*(const u_long*)input);
-  /*
-  uint32_t r;
-  uint8_t*data = (uint8_t*)&r;
-  data[0] = input[3];
-  data[1] = input[2];
-  data[2] = input[1];
-  data[3] = input[0];
-  return r;
-  */
 }
 uint8_t binary_reader::byte(){
   auto v = data[pointer++];

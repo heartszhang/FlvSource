@@ -164,16 +164,16 @@ protected:
 
 template<typename data_t>
 HRESULT flv_parser::begin_read(IMFAsyncCallback*cb, IUnknown*s, uint32_t length, HRESULT(flv_parser::*decoder)(data_t*)){
-  Reset(length);
+  reset(length);
   IMFAsyncResultPtr caller_result;
   auto hr = MFCreateAsyncResult(NewMFState<data_t>(data_t()).Get(), cb, s, &caller_result);
   hr = stream->BeginRead(
-    DataPtr(),
+    current(),
     length,
     MFAsyncCallback::New([this, caller_result, decoder](IMFAsyncResult*result)->HRESULT{
       DWORD cb = 0;
       auto hr = this->stream->EndRead(result, &cb);
-      this->MoveEnd(cb);
+      this->move_end(cb);
       if (ok(hr))
         hr = result->GetStatus();
       auto &v = FromAsyncResult<data_t>(caller_result.Get());

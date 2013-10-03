@@ -14,6 +14,7 @@ typedef Microsoft::WRL::ComPtr < IMFSample>                                 IMFS
 typedef Microsoft::WRL::ComPtr < IMFMediaBuffer>                       IMFMediaBufferPtr;
 typedef Microsoft::WRL::ComPtr < IMFAsyncResult> IMFAsyncResultPtr;
 typedef Microsoft::WRL::ComPtr < IMFMediaSource> IMFMediaSourcePtr;
+typedef Microsoft::WRL::ComPtr < IMFMediaTypeHandler> IMFMediaTypeHandlerPtr;
 
 enum class SourceState : uint32_t
 {
@@ -48,8 +49,17 @@ typedef Microsoft::WRL::ComPtr<IMFMediaSourceExt> IMFMediaSourceExtPtr;
 MIDL_INTERFACE("EA4EEBA2-211F-4D54-9AFB-3E050C0FB9E5")
 IMFMediaStreamExt : public IUnknown
 {
-
+  virtual HRESULT STDMETHODCALLTYPE IsActived()const           = 0;
+  virtual HRESULT STDMETHODCALLTYPE Active(BOOL sel) = 0;
+  virtual HRESULT STDMETHODCALLTYPE Start(const PROPVARIANT*)  = 0;
+  virtual HRESULT STDMETHODCALLTYPE Shutdown()                 = 0;
+  virtual HRESULT STDMETHODCALLTYPE NeedsData()                = 0;
+  virtual HRESULT STDMETHODCALLTYPE Pause()                    = 0;
+  virtual HRESULT STDMETHODCALLTYPE DeliverPayload(IMFSample*) = 0;
+  virtual HRESULT STDMETHODCALLTYPE EndOfStream()              = 0;
+//  virtual HRESULT STDMETHODCALLTYPE Seek(QWORD nano)           = 0;
 };
+typedef Microsoft::WRL::ComPtr<IMFMediaStreamExt> IMFMediaStreamExtPtr;
 
 
 inline bool ok(HRESULT const&hr){

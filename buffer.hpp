@@ -4,39 +4,23 @@
 struct buffer
 {
   buffer() = default;
+  buffer(buffer const&) = delete;
+  buffer&operator=(buffer const&) = delete;
   ~buffer()
   {
-    delete[] m_pArray;
+    delete[] _;
   }
-  uint8_t*   DataPtr();
-  uint32_t   DataSize() const;
+  uint8_t*   current();
+  uint32_t   size() const;
 
-  // Reserve: Reserves cb bytes of free data in the buffer.
-  // The reserved bytes start at DataPtr() + DataSize().
-  HRESULT Reserve(uint32_t cb);
-
-  // MoveStart: Moves the front of the buffer.
-  // Call this method after consuming data from the buffer.
-  HRESULT MoveStart(uint32_t cb);
-
-  // MoveEnd: Moves the end of the buffer.
+  // move_end: Moves the end of the buffer.
   // Call this method after reading data into the buffer.
-  HRESULT MoveEnd(uint32_t cb);
-
-  void Reset(uint32_t cb);  // reset buffer and reserve
+  void move_end(uint32_t cb);
+  void reset(uint32_t cb);  // reset buffer and reserve
 private:
-  uint8_t*    Ptr() { return m_pArray; }
+  void     allocate(uint32_t alloc);
+  uint8_t  *_    = nullptr;
+  uint32_t  allocated = 0;            // Actual allocation size.
 
-  HRESULT     SetSize(uint32_t count);
-  HRESULT     Allocate(uint32_t alloc);
-
-  uint32_t    CurrentFreeSize() const;
-
-private:
-  uint8_t  *m_pArray    = nullptr;
-  uint32_t  m_count     = 0;            // Nominal count.
-  uint32_t  m_allocated = 0;            // Actual allocation size.
-
-  uint32_t m_begin      = 0;
-  uint32_t m_end        = 0;            // 1 past the last element
+  uint32_t pointer        = 0;            // 1 past the last element
 };

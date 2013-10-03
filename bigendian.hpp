@@ -38,7 +38,7 @@ namespace bigendian{
 
     binary_writer(const binary_writer&) = delete;
     binary_writer()                     = delete;
-    explicit binary_writer(uint8_t*dat, uint32_t length)
-        : data(dat), length(length), pointer(0){}
+    explicit binary_writer(uint8_t*dat, uint32_t len)
+        : data(dat), length(len), pointer(0){}
   };
 }

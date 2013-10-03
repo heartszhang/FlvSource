@@ -57,7 +57,7 @@ public:
     );
     STDMETHODIMP Stop();
 
-    // Called by the byte stream handler.
+    // IMFMediaSourceExt
     HRESULT STDMETHODCALLTYPE BeginOpen(IMFByteStream *pStream, IMFAsyncCallback *pCB, IUnknown *pUnkState);
     HRESULT STDMETHODCALLTYPE EndOpen(IMFAsyncResult *pResult);
 
@@ -68,8 +68,8 @@ public:
     HRESULT STDMETHODCALLTYPE AsyncRequestData();
     HRESULT STDMETHODCALLTYPE AsyncEndOfStream();
     // Holds and releases the source's critical section. Called by the streams.
-    HRESULT  STDMETHODCALLTYPE   Lock() { EnterCriticalSection(&m_critSec); return S_OK; }
-    HRESULT  STDMETHODCALLTYPE  Unlock() { LeaveCriticalSection(&m_critSec); return S_OK; }
+    HRESULT  STDMETHODCALLTYPE  Lock() { EnterCriticalSection(&crit_sec); return S_OK; }
+    HRESULT  STDMETHODCALLTYPE  Unlock() { LeaveCriticalSection(&crit_sec); return S_OK; }
 
     HRESULT RuntimeClassInitialize();
     FlvSource();
@@ -107,16 +107,16 @@ private:
     HRESULT   ValidatePresentationDescriptor(IMFPresentationDescriptor *pPD);
 
     // Handler for async errors.
-    void        StreamingError(HRESULT hr);
+    void      StreamingError(HRESULT hr);
 
-    HRESULT     BeginAsyncOp();
-    HRESULT     CompleteAsyncOp();
+    void      enter_op();
+    void      leave_op();
 
-    HRESULT     DoOperation(SourceOp *pOp);
-    HRESULT     ValidateOperation();
+    HRESULT   DoOperation(SourceOp *pOp);
+    HRESULT   ValidateOperation();
 
 private:
-    CRITICAL_SECTION            m_critSec;                  // critical section for thread safety
+    CRITICAL_SECTION            crit_sec;                  // critical section for thread safety
     SourceState                 m_state = SourceState::STATE_INVALID;    // Current state (running, stopped, paused)
     struct {
       uint32_t pending_request                        : 1;
@@ -132,15 +132,15 @@ private:
 
     flv_parser                      parser;
     flv_file_header                 header;
-    IMFMediaEventQueuePtr           m_pEventQueue;             // Event generator helper
+    IMFMediaEventQueuePtr           event_queue;             // Event generator helper
     IMFPresentationDescriptorPtr    presentation_descriptor; // Presentation descriptor.
     IMFAsyncResultPtr               begin_open_caller_result;        // Result object for async BeginOpen operation.
     IMFByteStreamPtr                byte_stream;
     IMFMediaStreamPtr               video_stream;
     IMFMediaStreamPtr               audio_stream;
 
-    DWORD                       m_cPendingEOS = 0;              // Pending EOS notifications.
-    ULONG                       m_cRestartCounter = 0;          // Counter for sample requests.
+    DWORD                       pending_eos = 0;              // Pending EOS notifications.
+    ULONG                       restart_counter = 0;          // Counter for sample requests.
     uint64_t                    pending_seek_file_position = 0;
 
     // Async callback helper.
@@ -158,37 +158,47 @@ private:
     HRESULT FinishInitialize();
     HRESULT ReadFlvHeader();
     HRESULT STDMETHODCALLTYPE OnFlvHeader(IMFAsyncResult *result);
+
     HRESULT ReadFlvTagHeader();
     HRESULT STDMETHODCALLTYPE OnFlvTagHeader(IMFAsyncResult *result);
+
     HRESULT SeekToNextTag(::tag_header const&);
     HRESULT SeekToNextTag(uint32_t distance);
     HRESULT STDMETHODCALLTYPE OnSeekToNextTag(IMFAsyncResult *result);
+
     HRESULT ReadMetaData(uint32_t meta_size);
     HRESULT STDMETHODCALLTYPE OnMetaData(IMFAsyncResult *result);
+
     HRESULT ReadSampleHeader();
     HRESULT STDMETHODCALLTYPE OnSampleHeader(IMFAsyncResult*result);
-    HRESULT EndOfFile();
+
     HRESULT ReadAudioHeader(tag_header const&);
     HRESULT STDMETHODCALLTYPE OnAudioHeader(IMFAsyncResult*result);
 
     HRESULT DeliverVideoPacket(video_packet_header const&);
     HRESULT DeliverAvcPacket(video_packet_header const&);
     HRESULT DeliverNAvcPacket(video_packet_header const&);
+    HRESULT DeliverAudioPacket(audio_packet_header const&ash);
 
     HRESULT ReadVideoHeader(tag_header const&);
     HRESULT STDMETHODCALLTYPE OnVideoHeader(IMFAsyncResult*result);
-    HRESULT DeliverAudioPacket(audio_packet_header const&ash);
+
     HRESULT ReadAacPacketType(audio_packet_header const&);
     HRESULT STDMETHODCALLTYPE OnAacPacketType(IMFAsyncResult*);
+
     HRESULT ReadAudioData(audio_packet_header const&);
     HRESULT STDMETHODCALLTYPE OnAudioData(IMFAsyncResult*);
+
     HRESULT ReadAvcPacketType(video_packet_header const&);
     HRESULT STDMETHODCALLTYPE OnAvcPacketType(IMFAsyncResult*);
+
     HRESULT ReadVideoData(video_packet_header const&);
     HRESULT STDMETHODCALLTYPE OnVideoData(IMFAsyncResult*);
+
+
+    HRESULT EndOfFile();
     HRESULT CheckFirstPacketsReady();
 
     void DemuxSample();
     bool NeedDemux();
-    ComPtr<IUnknown> AsIUnknown();
 };

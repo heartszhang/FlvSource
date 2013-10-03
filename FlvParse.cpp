@@ -8,7 +8,7 @@
 #include "amf.hpp"
 
 HRESULT flv_parser::flv_header(::flv_header *h){
-  auto reader = bigendian::binary_reader(DataPtr(), DataSize());
+  auto reader = bigendian::binary_reader(current(), size());
   reader.skip(3);
   h->version = reader.byte();
   auto f = reader.byte();
@@ -21,38 +21,38 @@ HRESULT flv_parser::flv_header(::flv_header *h){
   return l == flv::flv_file_header_length ? S_OK : E_INVALID_PROTOCOL_FORMAT;
 }
 HRESULT flv_parser::audio_header(::audio_header*v){
-  auto x = *reinterpret_cast<raw_audio_tag_header*>(DataPtr());
+  auto x = *reinterpret_cast<raw_audio_tag_header*>(current());
   v->codec_id = (flv::audio_codec)x.sound_format;
   v->sound_rate = (flv::sound_rate)x.sound_rate;
   v->sound_size = (flv::sound_size)x.sound_size;
   v->sound_type = (flv::sound_type)x.sound_type;
-  assert(DataSize() == sizeof(raw_audio_tag_header));
+  assert(size() == sizeof(raw_audio_tag_header));
   return S_OK;
 }
 HRESULT flv_parser::video_header(::video_header*v){
-  auto x = *reinterpret_cast<raw_video_tag_header*>(DataPtr());
+  auto x = *reinterpret_cast<raw_video_tag_header*>(current());
   v->codec_id = (flv::video_codec)x.codec_id;
   v->frame_type = (flv::frame_type)x.frame_type;
-  assert(DataSize() == sizeof(raw_video_tag_header));
+  assert(size() == sizeof(raw_video_tag_header));
   return S_OK;
 }
 HRESULT flv_parser::avc_header(::avc_header*v){
-  auto reader = bigendian::binary_reader(DataPtr(), DataSize());
+  auto reader = bigendian::binary_reader(current(), size());
   v->avc_packet_type = (flv::avc_packet_type)reader.byte();
   v->composite_time = reader.ui24();
   assert(reader.pointer == reader.length);
   return S_OK;
 }
 HRESULT flv_parser::audio_data(packet*p){
-  *p = std::move(packet(DataPtr(), DataSize()));
+  *p = std::move(packet(current(), size()));
   return S_OK;
 }
 HRESULT flv_parser::video_data(packet*p){
-  *p = std::move(packet(DataPtr(), DataSize()));
+  *p = std::move(packet(current(), size()));
   return S_OK;
 }
 HRESULT flv_parser::aac_packet_type(flv::aac_packet_type*v){
-  *v = *reinterpret_cast<flv::aac_packet_type*>(DataPtr());
+  *v = *reinterpret_cast<flv::aac_packet_type*>(current());
   return S_OK;
 }
 
@@ -83,7 +83,7 @@ HRESULT flv_parser::end_video_data(IMFAsyncResult*result, packet*v){
 }
 
 HRESULT flv_parser::tag_header(::tag_header*header){
-  auto reader = bigendian::binary_reader(DataPtr(), DataSize());
+  auto reader = bigendian::binary_reader(current(), size());
   if (reader.length == 0){
     header->type = flv::tag_type::eof;
     return S_OK;
@@ -132,7 +132,7 @@ HRESULT flv_parser::end_avc_header(IMFAsyncResult*result, ::avc_header*v){
 }
 
 HRESULT flv_parser::on_meta_data(flv_meta*v) {
-  auto reader = flv::amf_reader(DataPtr(), DataSize());
+  auto reader = flv::amf_reader(current(), size());
   auto hr = reader.skip_script_data_value();
   if (ok(hr))
     hr = flv::on_meta_data_decoder().decode(reader, v);
