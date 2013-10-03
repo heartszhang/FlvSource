@@ -5,15 +5,15 @@ struct raw_flv_header {
   uint8_t signature[3];
   uint8_t version;
   uint8_t has_video : 1;
-uint8_t: 1;
+  uint8_t: 1;
   uint8_t has_audio : 1;
-uint8_t: 5;
+  uint8_t: 5;
   uint32_t data_offset_be;
 };
 struct raw_flv_tag_header {
   uint8_t tag_type : 5;
   uint8_t filter : 1;
-uint8_t:2;
+  uint8_t:2;
   uint8_t data_size[3];
   uint8_t timestamp[3];
   uint8_t timestamp_extended;
