@@ -8,6 +8,7 @@ uint8_t* buffer::current()
 }
 
 void buffer::reset(uint32_t sz) {
+  count = 0;
   pointer = 0;
   allocate(sz);
 }
@@ -22,33 +23,22 @@ void buffer::reset(uint32_t sz) {
 
 uint32_t buffer::size() const
 {
-    return pointer;
+    return count - pointer;
 }
 
 // Reserves memory for the array, but does not increase the count.
-void buffer::allocate(uint32_t alloc)
-{
-    if (alloc > allocated)
-    {
-        auto pTmp = new uint8_t[alloc];
-//        ZeroMemory(pTmp, alloc);
-
-        assert(pointer <= allocated);
-
-        // Copy the elements to the re-allocated array.
-        for (uint32_t i = 0; i < pointer; i++) {
-          pTmp[i] = _[i];
-        }
-
-        delete[] _;
-
-        _ = pTmp;
-        allocated = alloc;
-
-    }
+void buffer::allocate(uint32_t alloc) {
+  if (alloc > allocated) {
+    auto tmp = new uint8_t[alloc];
+    assert(pointer <= allocated);
+    memcpy_s(tmp, alloc, _, allocated);
+    delete[] _;
+    _ = tmp;
+    allocated = alloc;
+  }
 }
 
 void buffer::move_end(uint32_t cb)
 {
-  pointer += cb;
+  count += cb;
 }

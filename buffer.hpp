@@ -20,6 +20,7 @@ struct buffer
 private:
   void      allocate(uint32_t alloc);
   uint8_t  *_         = nullptr;
+  uint32_t  count     = 0;
   uint32_t  allocated = 0;              // Actual allocation size.
   uint32_t  pointer   = 0;              // 1 past the last element
 };
