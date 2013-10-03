@@ -15,6 +15,7 @@ public:
     return S_OK;
   }
 };
+
 template<typename state_t>
 state_t&
 FromMFState(IUnknown*u){
@@ -29,6 +30,7 @@ FromAsyncResult(IMFAsyncResult*result){
   result->GetObject(&obj);
   return FromMFState<state_t>(obj.Get());
 }
+
 template<typename state_t>
 state_t&
 FromAsyncResultState(IMFAsyncResult*result){
@@ -36,6 +38,7 @@ FromAsyncResultState(IMFAsyncResult*result){
   result->GetState(&obj);
   return FromMFState<state_t>(obj.Get());
 }
+
 typedef ComPtr<IUnknown> MFStatePtr;
 template<typename state_t>
 MFStatePtr

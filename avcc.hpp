@@ -1,13 +1,10 @@
 #pragma once
 #include <vector>
-#include <utility>
 #include "bigendian.hpp"
 #include "packet.hpp"
 
-
 namespace flv {
-//avc_decoder_configuration_record
-struct avcc
+struct avcc //avc_decoder_configuration_record
 {
   uint8_t profile   = 0;  //AVCProfileIndication
   uint8_t level     = 0;  //AVCLevelIndication

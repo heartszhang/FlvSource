@@ -2,19 +2,20 @@
 #include <cstdint>
 #include <memory>
 #include "flv_raw_header.hpp"
+
 namespace flv{
-  enum class tag_type : int32_t{
-    eof = 0,
-      audio = 8,
-      video = 9,
-      script_data = 18,
-  };
+enum class tag_type : int32_t{
+  eof = 0,
+    audio = 8,
+    video = 9,
+    script_data = 18,
+};
 
 // audio codec id, defined by flv spec
 enum class audio_codec : int32_t {
-  lpcm = 0         , //  0 = Linear PCM, platform endian, MFAudioFormat_PCM?
-    adpcm          , //  1  = ADPCM
-    mp3            , //   2 = MP3
+  lpcm = 0         ,//  0 = Linear PCM, platform endian, MFAudioFormat_PCM?
+    adpcm          ,//  1  = ADPCM
+    mp3            ,//  2 = MP3
     lpcm_le        ,//  3= Linear PCM, little endian
     nellymoser_16k ,//  4= Nellymoser 16 kHz mono
     nellymoser_8k  ,//  5= Nellymoser 8 kHz mono
@@ -39,11 +40,11 @@ enum class video_codec : int32_t {
 
 // video frame type , defined by flv spec
 enum class frame_type : int8_t{
-  key_frame             = 1 ,//= key frame (for AVC, a seekable frame)
-    inter_frame         = 2 ,//= inter frame (for AVC, a non-seekable frame)
-    disposable_inter_frame        = 3 ,//= disposable inter frame (H.263 only)
-    generated_key_frame = 4 ,//= generated key frame (reserved for server use only)
-    command_frame       = 5 //= video info/command frame
+  key_frame                = 1 ,//= key frame (for AVC, a seekable frame)
+    inter_frame            = 2 ,//= inter frame (for AVC, a non-seekable frame)
+    disposable_inter_frame = 3 ,//= disposable inter frame (H.263 only)
+    generated_key_frame    = 4 ,//= generated key frame (reserved for server use only)
+    command_frame          = 5 //= video info/command frame
 };
 
 enum class avc_packet_type : int8_t{
@@ -101,4 +102,3 @@ const static uint8_t flv_tag_header_filter_mask         = 5;  //bits
 
 struct audio_packet_header;
 struct video_packet_header;
-

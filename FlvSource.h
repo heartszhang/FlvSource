@@ -1,39 +1,13 @@
 #pragma once
-
-#include <cassert>
-#include <windows.h>
-#include <mftransform.h>
-
+//#include <cassert>
 #include <mfapi.h>
-#include <mfobjects.h>
-#include <mfidl.h>
+#include <uuids.h>      // MEDIASUBTYPE_H264
 #include <mferror.h>
-#include <uuids.h>      // MPEG-1 subtypes
-
-#include <amvideo.h>    // VIDEOINFOHEADER definition
-#include <dvdmedia.h>   // VIDEOINFOHEADER2
-#include <mmreg.h>      // MPEG1WAVEFORMAT
-#include <shlwapi.h>
-
-#include <wrl\implements.h>
-#include <vector>
-// Common sample files.
-#include "InterfaceList.hpp"
-
 #include "asynccallback.hpp"
 #include "MFMediaSourceExt.hpp"
+#include "FlvParse.hpp" // Flv parser
+
 using namespace Microsoft::WRL;
-
-// Forward declares
-class FlvByteStreamHandler;
-class FlvSource;
-class FlvStream;
-class SourceOp;
-
-
-
-#include "FlvParse.hpp"          // Flv parser
-#include "FlvStream.h"    // Flv stream
 
 // FlvSource: The media source object.
 class FlvSource : public RuntimeClass<RuntimeClassFlags<ClassicCom>, IMFMediaSource, IMFMediaSourceExt>
@@ -61,15 +35,10 @@ public:
     HRESULT STDMETHODCALLTYPE BeginOpen(IMFByteStream *pStream, IMFAsyncCallback *pCB, IUnknown *pUnkState);
     HRESULT STDMETHODCALLTYPE EndOpen(IMFAsyncResult *pResult);
 
-    // Queues an asynchronous operation, specify by op-type.
-    // (This method is public because the streams call it.)
-    //HRESULT QueueAsyncOperation(SourceOp::Operation OpType);
-    // called by streams
     HRESULT STDMETHODCALLTYPE AsyncRequestData();
     HRESULT STDMETHODCALLTYPE AsyncEndOfStream();
-    // Holds and releases the source's critical section. Called by the streams.
-    HRESULT  STDMETHODCALLTYPE  Lock() { EnterCriticalSection(&crit_sec); return S_OK; }
-    HRESULT  STDMETHODCALLTYPE  Unlock() { LeaveCriticalSection(&crit_sec); return S_OK; }
+    HRESULT STDMETHODCALLTYPE Lock() { EnterCriticalSection(&crit_sec); return S_OK; }
+    HRESULT STDMETHODCALLTYPE Unlock() { LeaveCriticalSection(&crit_sec); return S_OK; }
 
     HRESULT RuntimeClassInitialize();
     FlvSource();
@@ -82,42 +51,40 @@ private:
       return (m_state == SourceState::STATE_SHUTDOWN ? MF_E_SHUTDOWN : S_OK);
     }
     // Invoke the async callback to complete the BeginOpen operation.
-    HRESULT     CompleteOpen(HRESULT hrStatus);
+    HRESULT CompleteOpen(HRESULT hrStatus);
 
-    HRESULT     IsInitialized() const;
+    HRESULT IsInitialized() const;
 
     HRESULT AsyncStart(IMFPresentationDescriptor*, PROPVARIANT const*);
     HRESULT AsyncStop();
     HRESULT AsyncPause();
     HRESULT AsyncDo(IMFAsyncCallback*, IUnknown*);
 
-    HRESULT     DoStart(IMFPresentationDescriptor*, PROPVARIANT const*);
-    HRESULT     DoStop();
-    HRESULT     DoPause();
+    HRESULT DoStart(IMFPresentationDescriptor*, PROPVARIANT const*);
+    HRESULT DoStop();
+    HRESULT DoPause();
+    HRESULT DoRequestData();
+    HRESULT DoEndOfStream();
 
-    HRESULT     DoRequestData();
-    HRESULT     DoEndOfStream();
+    HRESULT InitPresentationDescriptor();
+    HRESULT SelectStreams(IMFPresentationDescriptor *pPD, const PROPVARIANT *varStart);
 
-    HRESULT     InitPresentationDescriptor();
-    HRESULT     SelectStreams(IMFPresentationDescriptor *pPD, const PROPVARIANT *varStart);
-
-    HRESULT   CreateAudioStream();
-    HRESULT   CreateVideoStream();
-    HRESULT   CreateStream(DWORD index, IMFMediaType*media_type, IMFMediaStream**v);
-    HRESULT   ValidatePresentationDescriptor(IMFPresentationDescriptor *pPD);
+    HRESULT CreateAudioStream();
+    HRESULT CreateVideoStream();
+    HRESULT CreateStream(DWORD index, IMFMediaType*media_type, IMFMediaStream**v);
+    HRESULT ValidatePresentationDescriptor(IMFPresentationDescriptor *pPD);
 
     // Handler for async errors.
-    void      StreamingError(HRESULT hr);
+    void    StreamingError(HRESULT hr);
 
-    void      enter_op();
-    void      leave_op();
+    void    enter_op();
+    void    leave_op();
 
-    HRESULT   DoOperation(SourceOp *pOp);
-    HRESULT   ValidateOperation();
+    HRESULT ValidateOperation();
 
 private:
-    CRITICAL_SECTION            crit_sec;                  // critical section for thread safety
-    SourceState                 m_state = SourceState::STATE_INVALID;    // Current state (running, stopped, paused)
+    CRITICAL_SECTION      crit_sec;
+    SourceState           m_state = SourceState::STATE_INVALID;
     struct {
       uint32_t pending_request                        : 1;
       uint32_t aac_audio_spec_config_ready            : 1;
@@ -134,7 +101,7 @@ private:
     flv_file_header                 header;
     IMFMediaEventQueuePtr           event_queue;             // Event generator helper
     IMFPresentationDescriptorPtr    presentation_descriptor; // Presentation descriptor.
-    IMFAsyncResultPtr               begin_open_caller_result;        // Result object for async BeginOpen operation.
+    IMFAsyncResultPtr               begin_open_caller_result;// Result object for async BeginOpen operation.
     IMFByteStreamPtr                byte_stream;
     IMFMediaStreamPtr               video_stream;
     IMFMediaStreamPtr               audio_stream;

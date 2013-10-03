@@ -1,7 +1,7 @@
 #pragma once
 #include <wrl\implements.h>
 #include <mfidl.h>      //IMFMediaStream
-#include <mferror.h>
+#include <mferror.h>   //MF_E_NOTINITIALIZED
 #include "MFMediaSourceExt.hpp"
 #include "InterfaceList.hpp"
 using namespace Microsoft::WRL;

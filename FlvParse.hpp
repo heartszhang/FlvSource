@@ -1,11 +1,6 @@
 ﻿#pragma once
 #include <cstdint>
-#include <memory>
-#include <vector>
-#include <algorithm>
-#include <comdef.h>
 #include <wrl.h>
-#include <mfidl.h>
 #include <mfapi.h>
 #include "bigendian.hpp"
 #include "flv_meta.hpp"
@@ -14,8 +9,9 @@
 #include "avcc.hpp"
 #include "MFAsyncCallback.hpp"
 #include "MFMediaSourceExt.hpp"
-struct aac_audio_spec_config;// iso-14496-3
-struct aac_raw_frame_data;
+//struct aac_audio_spec_config;// iso-14496-3
+//struct aac_raw_frame_data;
+
 struct flv_header{
   uint8_t version   = 0;
   uint8_t has_video = 0;
@@ -54,7 +50,8 @@ struct audio_packet_header : public tag_header, public audio_header{
 
   audio_packet_header() = default;
   explicit audio_packet_header(tag_header const&t) : tag_header(t){};
-  explicit audio_packet_header(tag_header const&t, audio_header const&ah) : tag_header(t), stream_id(0), audio_header(ah){
+  explicit audio_packet_header(tag_header const&t, audio_header const&ah)
+      : tag_header(t), stream_id(0), audio_header(ah){
   }
 
   //载荷数据长度，不包含tag_header, audio_header, aac_packet_type
@@ -101,34 +98,33 @@ struct video_packet_header : public tag_header, public video_header{
 };
 
 struct flv_file_header : public flv_meta{
-  uint64_t first_media_tag_offset = 0;
+  uint64_t            first_media_tag_offset = 0;
   video_packet_header video;
   audio_packet_header audio;
   flv::avcc           avcc;
   struct {
-    uint32_t file_header_ready : 1;  // decoded flv header
-    uint32_t meta_ready : 1;  // decoded on-meta-data
-    uint32_t has_script_data : 1;  // has script data tag
-    uint32_t has_video : 1;  // has video tag
-    uint32_t has_audio : 1;  // has audio tag
-    uint32_t scan_once : 1;  // scanned to end of file
+    uint32_t file_header_ready : 1;     // decoded flv header
+    uint32_t meta_ready : 1;            // decoded on-meta-data
+    uint32_t has_script_data : 1;       // has script data tag
+    uint32_t has_video : 1;             // has video tag
+    uint32_t has_audio : 1;             // has audio tag
+    uint32_t scan_once : 1;             // scanned to end of file
   }status;
 };
 
-
 struct flv_parser : public buffer{
-  IMFByteStreamPtr        stream;
-  HRESULT                     skip_previsou_tag_size();
+  IMFByteStreamPtr stream;
+  HRESULT          skip_previsou_tag_size();
 
-  HRESULT                     tag_header(::tag_header*);// parse flv tag header
-  HRESULT flv_header(::flv_header*);
-  HRESULT                     audio_header(audio_header*rlt);
-  HRESULT                     aac_packet_type(flv::aac_packet_type*rlt);
-  HRESULT                     video_header(::video_header*rlt);
-  HRESULT                     avc_header(::avc_header*);
-  HRESULT                     on_meta_data(flv_meta*rlt);
-  HRESULT audio_data(packet*);
-  HRESULT video_data(packet*);
+  HRESULT          tag_header(::tag_header*);// parse flv tag header
+  HRESULT          flv_header(::flv_header*);
+  HRESULT          audio_header(audio_header*rlt);
+  HRESULT          aac_packet_type(flv::aac_packet_type*rlt);
+  HRESULT          video_header(::video_header*rlt);
+  HRESULT          avc_header(::avc_header*);
+  HRESULT          on_meta_data(flv_meta*rlt);
+  HRESULT          audio_data(packet*);
+  HRESULT          video_data(packet*);
 
   HRESULT begin_flv_header(IMFByteStreamPtr stream, IMFAsyncCallback*, IUnknown*state);
   HRESULT end_flv_header(IMFAsyncResult*, ::flv_header*);
@@ -163,7 +159,10 @@ protected:
 };
 
 template<typename data_t>
-HRESULT flv_parser::begin_read(IMFAsyncCallback*cb, IUnknown*s, uint32_t length, HRESULT(flv_parser::*decoder)(data_t*)){
+HRESULT flv_parser::begin_read(IMFAsyncCallback*cb,
+                               IUnknown*s,
+                               uint32_t length,
+                               HRESULT(flv_parser::*decoder)(data_t*)){
   reset(length);
   IMFAsyncResultPtr caller_result;
   auto hr = MFCreateAsyncResult(NewMFState<data_t>(data_t()).Get(), cb, s, &caller_result);

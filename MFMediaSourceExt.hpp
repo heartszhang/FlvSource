@@ -4,17 +4,17 @@
 #include <mfidl.h>
 #include <unknwnbase.h>
 
-typedef Microsoft::WRL::ComPtr < IMFMediaEventQueue>                IMFMediaEventQueuePtr;
+typedef Microsoft::WRL::ComPtr < IMFMediaEventQueue>        IMFMediaEventQueuePtr;
 typedef Microsoft::WRL::ComPtr < IMFPresentationDescriptor> IMFPresentationDescriptorPtr;
-typedef Microsoft::WRL::ComPtr < IMFByteStream>                         IMFByteStreamPtr;
-typedef Microsoft::WRL::ComPtr < IMFMediaStream>                       IMFMediaStreamPtr;
-typedef Microsoft::WRL::ComPtr < IMFMediaType>                           IMFMediaTypePtr;
-typedef Microsoft::WRL::ComPtr < IMFStreamDescriptor>             IMFStreamDescriptorPtr;
-typedef Microsoft::WRL::ComPtr < IMFSample>                                 IMFSamplePtr;
-typedef Microsoft::WRL::ComPtr < IMFMediaBuffer>                       IMFMediaBufferPtr;
-typedef Microsoft::WRL::ComPtr < IMFAsyncResult> IMFAsyncResultPtr;
-typedef Microsoft::WRL::ComPtr < IMFMediaSource> IMFMediaSourcePtr;
-typedef Microsoft::WRL::ComPtr < IMFMediaTypeHandler> IMFMediaTypeHandlerPtr;
+typedef Microsoft::WRL::ComPtr < IMFByteStream>             IMFByteStreamPtr;
+typedef Microsoft::WRL::ComPtr < IMFMediaStream>            IMFMediaStreamPtr;
+typedef Microsoft::WRL::ComPtr < IMFMediaType>              IMFMediaTypePtr;
+typedef Microsoft::WRL::ComPtr < IMFStreamDescriptor>       IMFStreamDescriptorPtr;
+typedef Microsoft::WRL::ComPtr < IMFSample>                 IMFSamplePtr;
+typedef Microsoft::WRL::ComPtr < IMFMediaBuffer>            IMFMediaBufferPtr;
+typedef Microsoft::WRL::ComPtr < IMFAsyncResult>            IMFAsyncResultPtr;
+typedef Microsoft::WRL::ComPtr < IMFMediaSource>            IMFMediaSourcePtr;
+typedef Microsoft::WRL::ComPtr < IMFMediaTypeHandler>       IMFMediaTypeHandlerPtr;
 
 enum class SourceState : uint32_t
 {
@@ -39,13 +39,11 @@ IMFMediaSourceExt : public IUnknown
   virtual HRESULT STDMETHODCALLTYPE Lock() = 0;
   virtual HRESULT STDMETHODCALLTYPE Unlock() = 0;
 
-  virtual HRESULT STDMETHODCALLTYPE BeginOpen(IMFByteStream *pStream, IMFAsyncCallback *pCB, IUnknown *pUnkState) = 0;
+  virtual HRESULT STDMETHODCALLTYPE BeginOpen(IMFByteStream *pStream, IMFAsyncCallback *, IUnknown *) = 0;
   virtual HRESULT STDMETHODCALLTYPE EndOpen(IMFAsyncResult *pResult) = 0;
-
 };
 typedef Microsoft::WRL::ComPtr<IMFMediaSourceExt> IMFMediaSourceExtPtr;
 
-//{EA4EEBA2-211F-4D54-9AFB-3E050C0FB9E5}
 MIDL_INTERFACE("EA4EEBA2-211F-4D54-9AFB-3E050C0FB9E5")
 IMFMediaStreamExt : public IUnknown
 {
@@ -57,7 +55,6 @@ IMFMediaStreamExt : public IUnknown
   virtual HRESULT STDMETHODCALLTYPE Pause()                    = 0;
   virtual HRESULT STDMETHODCALLTYPE DeliverPayload(IMFSample*) = 0;
   virtual HRESULT STDMETHODCALLTYPE EndOfStream()              = 0;
-//  virtual HRESULT STDMETHODCALLTYPE Seek(QWORD nano)           = 0;
 };
 typedef Microsoft::WRL::ComPtr<IMFMediaStreamExt> IMFMediaStreamExtPtr;
 

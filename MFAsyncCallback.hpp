@@ -1,14 +1,12 @@
 #pragma once
 #include <wrl\implements.h>
-
 #include <mfapi.h>      //IMFAsyncCallback
 #include <functional>   // std::function
 using namespace Microsoft::WRL;
 
-// typedef _com_ptr_t<_com_IIID<IMFAsyncCallback, &__uuidof(IMFAsyncCallback)> > IMFAsyncCallbackPtr;
 typedef ComPtr<IMFAsyncCallback> IMFAsyncCallbackPtr;
-
 typedef std::function<HRESULT(IMFAsyncResult*)> invoke_t;
+
 class MFAsyncCallback : public RuntimeClass<RuntimeClassFlags<ClassicCom>, IMFAsyncCallback> {
   invoke_t invoke;
 

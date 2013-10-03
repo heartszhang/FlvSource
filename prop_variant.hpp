@@ -1,6 +1,6 @@
 #pragma once
 
-struct _prop_variant_t : PROPVARIANT{
+struct _prop_variant_t : PROPVARIANT {
   _prop_variant_t();
   ~_prop_variant_t();
   _prop_variant_t(const _prop_variant_t&);

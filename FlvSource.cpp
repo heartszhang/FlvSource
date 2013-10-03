@@ -3,7 +3,7 @@
 #include "MFState.hpp"
 #include "avcc.hpp"
 #include "prop_variant.hpp"
-
+#include "flvstream.h"
 #pragma comment(lib, "mfplat")
 #pragma comment(lib, "mfuuid")      // Media Foundation GUIDs
 #pragma comment(lib, "strmiids")    // DirectShow GUIDs
