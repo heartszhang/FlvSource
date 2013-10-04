@@ -1,0 +1,30 @@
+HKCU
+{
+	NoRemove CLSID
+	{
+		ForceRemove {EFE6208A-0A2C-49fa-8A01-3768B559B6DA} = s 'Flv Source ByteStreamHandler'
+		{
+			ForceRemove Programmable
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Both'
+			}
+		}
+	}
+  NoRemove Software
+  {
+    NoRemove Microsoft
+    {
+      NoRemove Windows Media Foundation
+      {
+        NoRemove ByteStreamHandlers
+        {
+          ForceRemove .flv
+          {
+            val {EFE6208A-0A2C-49fa-8A01-3768B559B6DA} = s 'Flv Source ByteStreamHandler'
+          }
+        }
+      }
+    }
+  }
+}
