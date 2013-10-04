@@ -1,10 +1,10 @@
 ﻿#include <wrl.h>
 #include "FlvSource.h"
 #include "FlvByteStreamHandler.h"
-
+#include "resource.h"
 #include <cassert>
+#include <atlbase.h>
 #include <strsafe.h>
-
 #include <initguid.h>
 #pragma comment(lib, "runtimeobject.lib")
 
@@ -64,9 +64,17 @@ HRESULT RegisterObject(HMODULE hModule, const GUID& guid, const wchar_t *pszDesc
 HRESULT UnregisterObject(const GUID& guid);
 
 STDAPI DllRegisterServer()
-{
+{  
+  wchar_t modpath[MAX_PATH];
+  GetModuleFileNameW(current_module, modpath, MAX_PATH);
     HRESULT hr = S_OK;
-
+    ComPtr<IRegistrar> reg;
+    hr = CoCreateInstance(CLSID_Registrar, nullptr, CLSCTX_INPROC, IID_IRegistrar, &reg);
+    if (ok(hr))
+      hr = reg->AddReplacement(L"MODULE", modpath);
+    if(ok(hr)) hr=  reg->ResourceRegister(modpath, IDR_FLVSOURCE, L"REGISTRY");
+    
+    /*
     // Register the bytestream handler's CLSID as a COM object.
     hr = RegisterObject(
             current_module,                              // Module handle
@@ -84,18 +92,27 @@ STDAPI DllRegisterServer()
             ByteStreamHandlerDescription               // Description
             );
     }
-
+*/
     return hr;
 }
 
 STDAPI DllUnregisterServer()
 {
-  // Unregister the CLSIDs
+  wchar_t modpath[MAX_PATH];
+  GetModuleFileNameW(current_module, modpath, MAX_PATH);
+  HRESULT hr = S_OK;
+  ComPtr<IRegistrar> reg;
+  hr = CoCreateInstance(CLSID_Registrar, nullptr, CLSCTX_INPROC, IID_IRegistrar, &reg);
+  if (ok(hr)) hr =     reg->AddReplacement(L"MODULE", modpath);
+  if(ok(hr)) hr =  reg->ResourceUnregister(modpath, IDR_FLVSOURCE, L"REGISTRY");
+  
+
+/*  // Unregister the CLSIDs
   UnregisterObject(__uuidof(FlvByteStreamHandler));
 
   // Unregister the bytestream handler for the file extension.
   UnregisterByteStreamHandler(__uuidof(FlvByteStreamHandler), FileExtension);
-
+*/
   return S_OK;
 }
 
