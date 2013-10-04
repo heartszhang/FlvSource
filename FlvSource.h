@@ -67,7 +67,7 @@ private:
     HRESULT DoEndOfStream();
 
     HRESULT InitPresentationDescriptor();
-    HRESULT SelectStreams(IMFPresentationDescriptor *pPD, const PROPVARIANT *varStart);
+    HRESULT SelectStreams(IMFPresentationDescriptor *pPD, uint64_t nanosec, bool isseek);
 
     HRESULT CreateAudioStream();
     HRESULT CreateVideoStream();
@@ -109,7 +109,7 @@ private:
     DWORD                       pending_eos = 0;              // Pending EOS notifications.
     ULONG                       restart_counter = 0;          // Counter for sample requests.
     uint64_t                    pending_seek_file_position = 0;
-
+    keyframe                    current_keyframe;
     // Async callback helper.
     AsyncCallback<FlvSource> on_flv_header;
     AsyncCallback<FlvSource> on_tag_header;
