@@ -200,7 +200,7 @@ uint32_t flv::on_meta_data_decoder::decode(flv::amf_reader &reader, flv_meta*v){
       v->height = reader.script_data_value_toui32();
     }
     else if (vname == "videodatarate"){
-      v->videodatarate = uint32_t(reader.script_data_value_tod() * 1000);
+      v->videodatarate = reader.script_data_value_toui32() * 1000;
     }
     else if (vname == "framerate"){
       v->framerate = reader.script_data_value_toui32();
@@ -219,7 +219,7 @@ uint32_t flv::on_meta_data_decoder::decode(flv::amf_reader &reader, flv_meta*v){
       v->audiosamplesize = (uint16_t)reader.script_data_value_toui32();
     }
     else if (vname == "audiodatarate"){
-      v->audiodatarate = reader.script_data_value_toui32();
+      v->audiodatarate = reader.script_data_value_toui32() * 1000;
     }
     else if (vname == "stereo"){
       v->stereo = reader.script_data_value_toui8();
