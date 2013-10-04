@@ -17,7 +17,7 @@ packet flv::avcc::code_private_data()const{  // sequence_header
 
 // uint16_be(sps_length) + sps + uint16_be(pps_length) + pps
 packet flv::avcc::sequence_header()const{
-  auto l = sizeof(uint16_t)+sps[0].length + sizeof(uint16_t)+pps[0].length;
+  uint32_t l = sizeof(uint16_t)+sps[0].length + sizeof(uint16_t)+pps[0].length;
   packet v(l);
   bigendian::binary_writer writer(v._, v.length);
   writer.ui16(static_cast<uint16_t>(sps[0].length));
