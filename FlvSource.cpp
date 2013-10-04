@@ -601,6 +601,14 @@ HRESULT FlvSource::InitPresentationDescriptor()
 
     // Create the presentation descriptor.
     hr = MFCreatePresentationDescriptor(cStreams, ppSD,      &presentation_descriptor);
+    if (ok(hr))
+      hr = presentation_descriptor->SetUINT64(MF_PD_DURATION, header.duration * 10000000ull);  // seconds to 100 nano
+    if (ok(hr))
+      hr = presentation_descriptor->SetUINT32(MF_PD_AUDIO_ENCODING_BITRATE, header.audiodatarate);
+    if (ok(hr))
+      hr = presentation_descriptor->SetUINT32(MF_PD_VIDEO_ENCODING_BITRATE, header.videodatarate);
+    if (ok(hr))
+      hr = presentation_descriptor->SetUINT64(MF_PD_TOTAL_FILE_SIZE, header.filesize);
 
     if (FAILED(hr))
     {
@@ -722,28 +730,54 @@ HRESULT FlvSource::DoStart(IMFPresentationDescriptor*pd, PROPVARIANT const*start
   enter_op();
 
   //startpos->vt == vt_empty) current pos
-
+  bool isseek = false;
+  bool restart = false;
+  keyframe k;
   if (startpos->vt == VT_I8){
-    pending_seek_file_position = header.keyframes.seek(startpos->hVal.QuadPart) - sizeof(uint32_t);  // - previous_tag_size
+    k = header.keyframes.seek(startpos->hVal.QuadPart);
+    pending_seek_file_position = k.position - flv::flv_previous_tag_size_field_length;  // - previous_tag_size
     status.pending_seek = 1;
+    if (m_state != SourceState::STATE_STOPPED)
+      isseek = true;
+  } else if (startpos->vt == VT_EMPTY) {
+    if (m_state == SourceState::STATE_STOPPED) {
+      pending_seek_file_position = header.first_media_tag_offset - flv::flv_previous_tag_size_field_length;
+      status.pending_seek = 1;
+      k.position = header.first_media_tag_offset;
+      k.time = 0;
+    } else {
+      k = current_keyframe;
+      restart = true;
+    }      
   }
-
+  _prop_variant_t actual_pos(k.time);
     // Select/deselect streams, based on what the caller set in the PD.
     // This method also sends the MENewStream/MEUpdatedStream events.
-    hr = SelectStreams(pd, startpos);
+    hr = SelectStreams(pd, k.time, isseek);
 
-    if (SUCCEEDED(hr))
+    if (ok(hr) && isseek) {
+      hr = QueueEvent(MESourceSeeked, GUID_NULL, hr, &actual_pos);
+    }else if (SUCCEEDED(hr))
     {
       m_state = SourceState::STATE_STARTED;
+      IMFMediaEventPtr evt;
+      hr = MFCreateMediaEvent(MESourceStarted, GUID_NULL, hr, &actual_pos, &evt);
+      if (ok(hr)) {
+        hr = evt->SetUINT64(MF_EVENT_SOURCE_ACTUAL_START, k.time);
+      }
+      if (ok(hr)) hr = event_queue->QueueEvent(evt.Get());
 
         // Queue the "started" event. The event data is the start position.
-      hr = event_queue->QueueEventParamVar(
+      /*hr = event_queue->QueueEventParamVar(
             MESourceStarted,
             GUID_NULL,
             S_OK,
             startpos
             );
+      */
     }
+    if (ok(hr) && audio_stream) hr = to_stream_ext(audio_stream)->Start(k.time, isseek);
+    if (ok(hr) && video_stream) hr = to_stream_ext(video_stream)->Start(k.time, isseek);
 
     if (FAILED(hr))
     {
@@ -767,7 +801,7 @@ HRESULT FlvSource::DoStart(IMFPresentationDescriptor*pd, PROPVARIANT const*start
 // Called during START operations to select and deselect streams.
 // This method also sends the MENewStream/MEUpdatedStream events.
 //-------------------------------------------------------------------
-HRESULT     FlvSource::SelectStreams(IMFPresentationDescriptor *pPD, const PROPVARIANT *varStart){
+HRESULT     FlvSource::SelectStreams(IMFPresentationDescriptor *pPD, uint64_t nanosec, bool isseek){
   HRESULT hr = S_OK;
 
   // Reset the pending EOS count.
@@ -813,7 +847,7 @@ HRESULT     FlvSource::SelectStreams(IMFPresentationDescriptor *pPD, const PROPV
       if(ok(hr)) hr = event_queue->QueueEventParamUnk(met, GUID_NULL, hr, stream.Get());
 
       // Start the stream. The stream will send the appropriate event.
-      if(ok(hr)) hr = flv_stream->Start(varStart);
+//      if(ok(hr)) hr = flv_stream->Start(nanosec, isseek);
     }
     else if (ok(hr) && was_selected) {
       (void)flv_stream->Shutdown();  // ignore result
@@ -838,23 +872,13 @@ HRESULT FlvSource::AsyncStop(){
 HRESULT FlvSource::DoStop()
 {
   enter_op();
-
+  HRESULT hr = S_OK;
   // Stop the active streams.
-
-  // Seek to the start of the file. If we restart after stopping,
-  // we will start from the beginning of the file again.
-  QWORD qwCurrentPosition = 0;
-  HRESULT   hr = byte_stream->Seek(
-    msoBegin,
-    0,
-    MFBYTESTREAM_SEEK_FLAG_CANCEL_PENDING_IO,
-    &qwCurrentPosition
-    );
+  if (audio_stream) hr = to_stream_ext(audio_stream)->Stop();
+  if (video_stream) hr = to_stream_ext(video_stream)->Stop();
 
   // Increment the counter that tracks "stale" read requests.
-  if (SUCCEEDED(hr)) {
-    ++restart_counter; // This counter is allowed to overflow.
-  }
+  ++restart_counter; // This counter is allowed to overflow.
 
   m_state = SourceState::STATE_STOPPED;
 
@@ -1160,7 +1184,7 @@ HRESULT FlvSource::DeliverNAvcPacket(video_packet_header const&vsh){
   hr = NewMFMediaBuffer(vsh.payload._, vsh.payload.length, &mbuf);
   if (ok(hr)) hr = sample->AddBuffer(mbuf.Get());
 
-  if (ok(hr)) hr = sample->SetSampleTime(vsh.nano_timestamp);
+  if (ok(hr)) hr = sample->SetSampleTime(vsh.nano_timestamp + vsh.composition_time * 10000);
   if (ok(hr)) hr = sample->SetUINT32(MFSampleExtension_CleanPoint, vsh.frame_type == flv::frame_type::key_frame ? 1 : 0);
   // should set sample duration
 
@@ -1172,7 +1196,12 @@ HRESULT FlvSource::DeliverNAvcPacket(video_packet_header const&vsh){
   DemuxSample();
   return hr;
 }
+
+
 HRESULT FlvSource::DeliverVideoPacket(video_packet_header const& vsh){
+  auto isk = vsh.frame_type == flv::frame_type::key_frame || vsh.frame_type == flv::frame_type::generated_key_frame;
+  if (isk)
+    current_keyframe = keyframe{ vsh.data_offset - flv::flv_tag_header_length, vsh.nano_timestamp  + vsh.composition_time * 10000};
   if (vsh.codec_id == flv::video_codec::avc)
     return DeliverAvcPacket(vsh);
   else
@@ -1447,6 +1476,7 @@ HRESULT CreateAudioMediaType(const flv_file_header& header, IMFMediaType **ppTyp
     if (ok(hr)) hr = pType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, header.stereo + 1);
     if (ok(hr)) hr = pType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 1);
     if (ok(hr)) hr = pType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, header.audiosamplesize);
+    if (ok(hr)) hr = pType->SetUINT32(MF_MT_AVG_BITRATE, header.audiodatarate);
     if (ok(hr)) hr = pType->SetBlob(MF_MT_USER_DATA, header.audio.payload._, header.audio.payload.length);
 
     if (ok(hr))
@@ -1540,4 +1570,9 @@ _prop_variant_t::_prop_variant_t(PROPVARIANT const*p){
 }
 _prop_variant_t::_prop_variant_t(_prop_variant_t const&rhs){
   PropVariantCopy(this, &rhs);
+}
+_prop_variant_t::_prop_variant_t(uint64_t v) {
+  PropVariantInit(this);
+  vt = VT_I8;
+  hVal.QuadPart = v;
 }
