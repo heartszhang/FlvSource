@@ -177,6 +177,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="FlvSource.def" />
+    <None Include="FlvSource.rgs" />
+    <None Include="registry.bin" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="amf.hpp" />
@@ -197,6 +199,11 @@
     <ClInclude Include="FlvParse.hpp" />
     <ClInclude Include="packet.hpp" />
     <ClInclude Include="flv_raw_header.hpp" />
+    <ClInclude Include="prop_variant.hpp" />
+    <ClInclude Include="resource.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="FlvSource.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
