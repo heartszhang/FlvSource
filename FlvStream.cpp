@@ -2,6 +2,7 @@
 #include <cassert>
 #include <mfapi.h>
 #include "MFMediaSourceExt.hpp"
+#include "prop_variant.hpp"
 
 struct SourceLock {
   IMFMediaSourceExt *source;
@@ -96,16 +97,15 @@ HRESULT FlvStream::Active(BOOL act)
 // start: Starting position. VT_EMPTY, VT_I8, not null
 //-------------------------------------------------------------------
 
-HRESULT FlvStream::Start(const PROPVARIANT* start) {
+HRESULT FlvStream::Start(UINT64 nanosec, BOOL isseek) {
   SourceLock lock(source);
-
+  _prop_variant_t starttime(nanosec);
   auto hr = CheckShutdown();
-  if (start && start->vt == VT_I8) {
+  if (ok(hr) && isseek) {
     samples.clear();// abandon previsou cached samples, but keep tokens
-  }
-  // Queue the stream-started event.
-  if (ok(hr)) {
-    hr = QueueEvent(MEStreamStarted, GUID_NULL, S_OK, start);
+    QueueEvent(MEStreamSeeked, GUID_NULL, hr, &starttime);
+  } else if (ok(hr)) {// Queue the stream-started event.
+    hr = QueueEvent(MEStreamStarted, GUID_NULL, S_OK, &starttime);
   }
 
   if (ok(hr)) {

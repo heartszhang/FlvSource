@@ -30,7 +30,7 @@ public:
 
   // Other methods (called by source)
   STDMETHODIMP   Active(BOOL act);
-  STDMETHODIMP   Start(const PROPVARIANT* varStart);
+  STDMETHODIMP   Start(UINT64 nanosec, BOOL isseek);
   STDMETHODIMP   Pause();
   STDMETHODIMP   Stop();
   STDMETHODIMP   EndOfStream();
